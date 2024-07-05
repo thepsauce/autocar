@@ -1,0 +1,5 @@
+__PROJECT_FILE=true
+project_name="build"
+project_source_dirs=( "src" )
+project_common_flags=( )
+project_linker_libs=( )
