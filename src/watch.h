@@ -2,16 +2,17 @@
 #define WATCH_H
 
 #include <pthread.h>
+#include <stdbool.h>
+#include <sys/stat.h>
 
 struct file {
     char *path;
-    int wd;
-    char **files;
-    size_t num_files;
+    struct stat st;
+    bool has_changed;
 };
 
 extern struct file_list {
-    struct file *p;
+    struct file **p;
     size_t n;
     pthread_mutex_t lock;
 } Files;

@@ -31,6 +31,9 @@ bool parse_args(int argc, char **argv)
         { "test", 't', 1, { .s = &Args.test } },
         { "debug", 'g', 0, { .b = &Args.do_debug } },
         { "auto", 'a', 0, { .b = &Args.do_auto } },
+        { "sources", 's', 2, { .v = { &Args.sources, &Args.num_sources } } },
+        { "build", 'b', 1, { .s = &Args.build } },
+        { "gcc-flags", '\0', 1, { .s = &Args.gcc_flags } },
     };
 
     argc--;

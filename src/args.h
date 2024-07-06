@@ -11,8 +11,12 @@ extern struct program_arguments {
     char *test;
     bool do_debug;
     bool do_auto;
+    char *build;
+    char **sources;
+    size_t num_sources;
     char **files;
     size_t num_files;
+    char *gcc_flags;
 } Args;
 
 bool parse_args(int argc, char **argv);

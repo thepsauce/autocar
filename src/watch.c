@@ -1,85 +1,34 @@
+#include "args.h"
 #include "watch.h"
+#include "path.h"
+#include "salloc.h"
 
-#include <stdlib.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 #include <unistd.h>
-#include <sys/inotify.h>
-
-int NotifyFd;
 
 pthread_t WatchThreadId;
 
 struct file_list Files;
 
-static struct file *find_file_by_watch(int wd)
+static char *alloc_sprintf(const char *fmt, ...)
 {
-    for (size_t i = 0; i < Files.n; i++) {
-        if (Files.p[i].wd == wd) {
-            return &Files.p[i];
-        }
-    }
-    return NULL;
-}
+    char *s;
+    va_list l;
+    int n;
 
-void *watch_thread(void *unused)
-{
-    (void) unused;
+    va_start(l, fmt);
+    n = vsnprintf(NULL, 0, fmt, l);
+    va_end(l);
 
-    char buf[4096];
-    ssize_t len;
-    struct inotify_event *ie;
-
-    while (1) {
-        len = read(NotifyFd, buf, sizeof(buf));
-        pthread_mutex_lock(&Files.lock);
-        for (char *b = buf; b < buf + len; b += sizeof(*ie) + ie->len) {
-            ie = (struct inotify_event*) b;
-            struct file *const file = find_file_by_watch(ie->wd);
-            char *const ext = strrchr(ie->name, '.');
-            if (ext == NULL) {
-                continue;
-            }
-            fprintf(stderr, "log: something happened to [%s]\n", ext);
-            if (ie->mask & IN_CREATE) {
-                fprintf(stderr, "log: file created: %s\n", ext);
-            }
-            if (ie->mask & IN_DELETE) {
-                fprintf(stderr, "log: file deleted: %s\n", ext);
-            }
-            if (ie->mask & IN_MOVED_FROM) {
-                fprintf(stderr, "log: file moved away: %s\n", ext);
-            }
-            if (ie->mask & IN_MOVED_TO) {
-                fprintf(stderr, "log: file moved to: %s\n", ext);
-            }
-            if (ie->mask & IN_MOVE_SELF) {
-                fprintf(stderr, "log: I moved away: %s\n", ext);
-            }
-            if (ie->mask & IN_DELETE_SELF) {
-                fprintf(stderr, "log: I was deleted: %s\n", ext);
-            }
-        }
-        pthread_mutex_unlock(&Files.lock);
-    }
-}
-
-int init_watch(void)
-{
-    NotifyFd = inotify_init();
-    if (NotifyFd < 0) {
-        fprintf(stderr, "error: could not init inotify: %s\n",
-                strerror(errno));
-        return -1;
-    }
-    const int err = pthread_create(&WatchThreadId, 0, watch_thread, NULL);
-    if (err != 0) {
-        fprintf(stderr, "error: could not create watch thread: %s\n",
-                strerror(err));
-        return -1;
-    }
-    return 0;
+    va_start(l, fmt);
+    s = smalloc(n + 1);
+    vsprintf(s, fmt, l);
+    va_end(l);
+    return s;
 }
 
 static struct file *search_file(const char *path, size_t *pIndex)
@@ -91,12 +40,13 @@ static struct file *search_file(const char *path, size_t *pIndex)
     while (l < r) {
         const size_t m = (l + r) / 2;
 
-        const int cmp = strcmp(Files.p[m].path, path);
+        struct file *const file = Files.p[m];
+        const int cmp = strcmp(file->path, path);
         if (cmp == 0) {
             if (pIndex != NULL) {
                 *pIndex = m;
             }
-            return &Files.p[m];
+            return file;
         }
         if (cmp < 0) {
             l = m + 1;
@@ -110,49 +60,221 @@ static struct file *search_file(const char *path, size_t *pIndex)
     return NULL;
 }
 
-static struct file *add_file(const char *path)
+static struct file *add_file(const char *path, size_t index)
 {
-    struct file *p;
-
-    p = reallocarray(Files.p, Files.n + 1, sizeof(*Files.p));
-    if (p == NULL) {
-        return NULL;
-    }
-    Files.p = p;
-    p += Files.n;
-    p->path = strdup(path);
-    if (p->path == NULL) {
-        return NULL;
-    }
+    Files.p = sreallocarray(Files.p, Files.n + 1, sizeof(*Files.p));
+    struct file *const file = smalloc(sizeof(*file));
+    file->path = sstrdup(path);
+    memmove(&Files.p[index + 1], &Files.p[index],
+            sizeof(*Files.p) * (Files.n - index));
+    Files.p[index] = file;
     Files.n++;
-    return p;
+    return file;
 }
 
-int watch_file_or_directory(const char *path)
+static bool check_file_changed(const char *path)
 {
+    const size_t path_len = strlen(path);
+
+    if (path_len < 3 || path[path_len - 2] != '.') {
+        return false;
+    }
+
     struct file *file;
-    int wd;
+
     size_t index;
-
     file = search_file(path, &index);
-    if (file != NULL) {
-        return 1;
-    }
-
-    wd = inotify_add_watch(NotifyFd, path,
-            IN_CREATE | IN_DELETE | IN_MOVE |
-            IN_ATTRIB | IN_MODIFY);
-    if (wd == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return -1;
-    }
-
-    pthread_mutex_lock(&Files.lock);
-    file = add_file(path);
     if (file == NULL) {
+        file = add_file(path, index);
+        if (file == NULL) {
+            return false;
+        }
+    }
+
+    if (file->has_changed) {
+        return true;
+    }
+
+    if (file->path[path_len - 1] != 'c' &&
+            file->path[path_len - 1] != 'h') {
+        return false;
+    }
+
+    struct stat st;
+    if (stat(file->path, &st) != 0) {
+        return false;
+    }
+    if (st.st_mtime != file->st.st_mtime) {
+        file->has_changed = true;
+        file->st = st;
+        return true;
+    }
+    file->st = st;
+
+    if (file->path[path_len - 1] != 'c') {
+        return false;
+    }
+
+    char *cmd = alloc_sprintf("gcc -MG -MM \"%s\"", file->path);
+    FILE *const pp = popen(cmd, "r");
+
+    free(cmd);
+
+    if (pp == NULL) {
+        return false;
+    }
+
+    char *str;
+    size_t ct, lt;
+    int c;
+
+    ct = 128;
+    str = smalloc(ct);
+    lt = 0;
+
+    while ((c = fgetc(pp)) != EOF) {
+        if (lt + 1 > ct) {
+            ct *= 2;
+            str = srealloc(str, ct);
+        }
+        if (c == '\\') {
+            c = fgetc(pp);
+        } else if (c == ':') {
+            break;
+        }
+        str[lt++] = c;
+    }
+
+    str[lt] = '\0';
+
+    char *target;
+    size_t dir_len;
+
+    char *const name = strrchr(file->path, '/');
+    if (name != NULL) {
+        dir_len = name - file->path;
+    } else {
+        dir_len = 0;
+    }
+    target = smalloc(path_len + 1);
+    for (size_t i = 0; i < dir_len; i++) {
+        target[i] = file->path[i];
+    }
+    if (dir_len != 0) {
+        target[dir_len++] = '/';
+    }
+    memcpy(&target[dir_len], str, lt);
+    target[path_len] = '\0';
+
+    while ((c = fgetc(pp)) != EOF) {
+        if (lt + 2 > ct) {
+            ct *= 2;
+            str = srealloc(str, ct);
+        }
+        if (c == '\\') {
+            c = fgetc(pp);
+        } else if (c == ' ') {
+            str[lt] = '\0';
+            if (str[lt - 1] == 'h') {
+                if (check_file_changed(str)) {
+                    free(str);
+                    pclose(pp);
+                    return true;
+                }
+            }
+            lt = 0;
+            continue;
+        }
+        str[lt++] = c;
+    }
+
+    free(str);
+
+    pclose(pp);
+    return false;
+}
+
+static int compile_file(struct file *file)
+{
+    static const char *const default_flags =
+        "-g -fsanitize=address -std=gnu99 -Wall -Wextra -Werror -Wpedantic";
+    const char *const flags =
+        Args.gcc_flags == NULL ? default_flags : Args.gcc_flags;
+    char object[strlen(file->path) + 1];
+    strcpy(object, file->path);
+    object[sizeof(object) - 2] = '.';
+    object[sizeof(object) - 1] = 'o';
+    char *cmd = alloc_sprintf("gcc %s -c %s -o %s", flags, file->path, object);
+    system(cmd);
+    free(cmd);
+    return 0;
+}
+
+static int check_sources(const char *name)
+{
+    struct path path;
+    struct dirent *ent;
+
+    if (init_path(&path, name) < 0) {
         return -1;
     }
-    file->wd = wd;
-    pthread_mutex_unlock(&Files.lock);
+
+    while ((ent = next_deep_file(&path)) != NULL) {
+        if (ent->d_type == DT_REG) {
+            if (check_file_changed(path.p)) {
+                printf("has_changed: %s\n", path.p);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < Files.n; i++) {
+        struct file *const file = Files.p[i];
+        if (file->has_changed && file->path[strlen(file->path) - 1] == 'c') {
+            compile_file(file);
+        }
+        file->has_changed = false;
+    }
+
+    clear_path(&path);
+    return 0;
+}
+
+void *watch_thread(void *unused)
+{
+    (void) unused;
+
+    while (1) {
+        pthread_mutex_lock(&Files.lock);
+        if (Args.num_sources == 0) {
+            check_sources("src");
+        } else {
+            for (size_t i = 0; i < Args.num_sources; i++) {
+                struct stat st;
+                if (stat(Args.sources[i], &st) != 0) {
+                    fprintf(stderr, "stat(%s): %s\n",
+                            Args.sources[i],
+                            strerror(errno));
+                    continue;
+                }
+                if (S_ISDIR(st.st_mode)) {
+                    check_sources(Args.sources[i]);
+                } else {
+                    check_file_changed(Args.sources[i]);
+                }
+            }
+        }
+        pthread_mutex_unlock(&Files.lock);
+        usleep(150000);
+    }
+}
+
+int init_watch(void)
+{
+    const int err = pthread_create(&WatchThreadId, 0, watch_thread, NULL);
+    if (err != 0) {
+        fprintf(stderr, "error: could not create watch thread: %s\n",
+                strerror(err));
+        exit(EXIT_FAILURE);
+    }
     return 0;
 }

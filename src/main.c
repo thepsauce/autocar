@@ -15,10 +15,6 @@ int main(int argc, char **argv)
     }
 
     init_watch();
-    for (size_t i = 0; i < Args.num_files; i++) {
-        watch_file_or_directory(Args.files[i]);
-    }
-
     while (1) {
         sleep(1);
     }
