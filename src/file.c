@@ -1,3 +1,4 @@
+#include "args.h"
 #include "salloc.h"
 #include "macros.h"
 #include "file.h"
@@ -16,7 +17,7 @@ static struct file *add_file(unsigned flags, const char *path)
 {
     struct file *file;
 
-    fprintf(stderr, "add file: %s\n", path);
+    LOG("add file: %s\n", path);
 
     Files.ptr = sreallocarray(Files.ptr,
             Files.num + 1, sizeof(*Files.ptr));
@@ -40,7 +41,7 @@ static bool collect_files(const char *path, unsigned flags)
     size_t path_len;
     size_t name_len;
 
-    fprintf(stderr, "collect sources from: '%s'\n", path);
+    LOG("collect sources from: '%s'\n", path);
 
     dir = opendir(path);
     if (dir == NULL) {
@@ -99,14 +100,14 @@ static int create_base_directory(/* const */char *path)
 {
     for (char *cur = path, *s; (s = strchr(cur, '/')) != NULL;) {
         s[0] = '\0';
-        fprintf(stderr, "mkdir '%s'", path);
+        LOG("mkdir '%s'", path);
         if (mkdir(path, 0755) == -1) {
             if (errno != EEXIST) {
                 return -1;
             }
-            fprintf(stderr, ": exists");
+            LOG(": exists");
         }
-        fprintf(stderr, "\n");
+        LOG("\n");
         s[0] = '/';
         cur = s + 1;
     }
@@ -121,7 +122,7 @@ bool compile_files(void)
     char *args[6 + Config.num_c_flags];
     int pid;
 
-    fprintf(stderr, "compiling sources/tests\n");
+    LOG("compiling sources/tests\n");
 
     args[0] = Config.cc;
     for (size_t f = 0; f < Config.num_c_flags; f++) {
@@ -140,7 +141,7 @@ bool compile_files(void)
         }
 
         o = get_object_file(file->path);
-        fprintf(stderr, "%s: %s\n", file->path, o);
+        LOG("%s: %s\n", file->path, o);
         if (o == NULL) {
             return false;
         }
@@ -150,8 +151,11 @@ bool compile_files(void)
             }
             args[Config.num_c_flags + 2] = file->path;
             args[Config.num_c_flags + 4] = o;
-            for (size_t i = 0; i < ARRAY_SIZE(args) - 1; i++) {
-                fprintf(stderr, "%s ", args[i]);
+            if (Args.verbose) {
+                for (size_t i = 0; i < ARRAY_SIZE(args) - 1; i++) {
+                    fprintf(stderr, "%s ", args[i]);
+                }
+                fprintf(stderr, "\n");
             }
 
             pid = fork();
@@ -164,7 +168,7 @@ bool compile_files(void)
                 waitpid(pid, NULL, 0);
             }
         } else {
-            fprintf(stderr, "nothing to be done\n");
+            LOG("nothing to be done\n");
         }
         add_file(FILE_OBJECTS, o);
         free(o);
@@ -172,12 +176,12 @@ bool compile_files(void)
     return true;
 }
 
-bool run_tests(void)
+bool run_tests_and_compile_binaries(void)
 {
     char *ext, *ext2;
     char *o;
 
-    fprintf(stderr, "run tests\n");
+    LOG("run tests\n");
 
     for (size_t i = 0; i < Files.num; i++) {
         struct file *const file = &Files.ptr[i];
@@ -215,7 +219,7 @@ bool run_tests(void)
         }
 
         o = get_object_file(file->path);
-        fprintf(stderr, "%s: %s\n", file->path, o);
+        LOG("%s: %s\n", file->path, o);
         if (data != NULL) {
             fclose(data);
         }

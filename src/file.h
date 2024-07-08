@@ -22,7 +22,7 @@ extern struct file_list {
 bool collect_sources(const char *path);
 bool collect_tests(const char *path);
 bool compile_files(void);
-bool run_tests(void);
+bool run_tests_and_compile_binaries(void);
 
 #endif
 

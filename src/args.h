@@ -6,6 +6,8 @@
 
 extern struct program_arguments {
     bool needs_help;
+    bool verbose;
+    char *verbosity;
     bool allow_parent_paths;
     char *config;
     bool no_config;
@@ -15,6 +17,12 @@ extern struct program_arguments {
 
 bool parse_args(int argc, char **argv);
 void usage(FILE *fp, const char *programName);
+
+#define LOG(s, ...) do { \
+    if (Args.verbosity != NULL && Args.verbosity[0] == 'd') { \
+        fprintf(stderr, (s), ##__VA_ARGS__); \
+    } \
+} while (0)
 
 #endif
 

@@ -24,23 +24,22 @@ int main(int argc, char **argv)
                 !check_config()) {
             return 1;
         }
-        fprintf(stderr, "CC = %s\n", Config.cc);
-        fprintf(stderr, "C_FLAGS = (");
+        LOG("CC = %s\n", Config.cc);
+        LOG("C_FLAGS = (");
         for (size_t i = 0; i < Config.num_c_flags; i++) {
             if (i > 0) {
-                fprintf(stderr, " ");
+                LOG(" ");
             }
-            fprintf(stderr, "%s", Config.c_flags[i]);
+            LOG("%s", Config.c_flags[i]);
         }
-        fprintf(stderr, ")\nC_LIBS = (");
+        LOG(")\nC_LIBS = (");
         for (size_t i = 0; i < Config.num_c_libs; i++) {
             if (i > 0) {
-                fprintf(stderr, " ");
+                LOG(" ");
             }
-            fprintf(stderr, "%s", Config.c_libs[i]);
+            LOG("%s", Config.c_libs[i]);
         }
-        fprintf(stderr,
-                ")\nSOURCES = %s\n"
+        LOG(")\nSOURCES = %s\n"
                 "TESTS = %s\n"
                 "BUILD = %s\n"
                 "INTERVAL = %ld\n",
@@ -48,19 +47,21 @@ int main(int argc, char **argv)
                 Config.build, Config.interval);
     }
 
-    if (!collect_sources(Config.sources)) {
-        return 1;
-    }
-    if (!collect_tests(Config.tests)) {
-        return 1;
+    if (Args.verbose) {
+        fprintf(stderr, "up and running\n");
     }
 
-    if (!compile_files()) {
-        return 1;
-    }
+    while (1) {
+        Files.num = 0;
 
-    if (!run_tests()) {
-        return 1;
+        if (!(collect_sources(Config.sources) &&
+                collect_tests(Config.tests) &&
+                compile_files() &&
+                run_tests_and_compile_binaries())) {
+            LOG("did not reach the end\n");
+        }
+        usleep(1000 * Config.interval);
+        LOG("\n");
     }
 
     /* free resources */
@@ -84,11 +85,6 @@ int main(int argc, char **argv)
     free(Config.sources);
     free(Config.tests);
     free(Config.build);
-
-    return 0;
-    while (1) {
-        usleep(1000 * Config.interval);
-    }
 
     return 0;
 }

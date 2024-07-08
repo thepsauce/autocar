@@ -13,21 +13,21 @@ bool parse_args(int argc, char **argv)
         char shrt;
         /* 0 - no arguments */
         /* 1 - single argument */
-        /* 2 - arguments until the next '-' */
+        /* 2 - optional argument */
+        /* 3 - arguments until the next '-' */
         int n;
-        union {
-            bool *b;
-            struct {
-                char ***p;
-                size_t *n;
-            } v;
-            char **s;
-        } dest;
+        bool *b; /* 0 | 2 */
+        struct {
+            char ***p;
+            size_t *n;
+        } v; /* 3 */
+        char **s; /* 1 */
     } pArgs[] = {
-        { "help", 'h', 0, { .b = &Args.needs_help } },
-        { "config", 'c', 1, { .s = &Args.config } },
-        { "no-config", '\0', 0, { .b = &Args.no_config } },
-        { "allow-parent-paths", '\0', 0, { .b = &Args.allow_parent_paths } },
+        { "help", 'h', 0, .b = &Args.needs_help },
+        { "verbose", 'v', 2, .b = &Args.verbose, .s = &Args.verbosity },
+        { "config", 'c', 1, .s = &Args.config },
+        { "no-config", '\0', 0, .b = &Args.no_config },
+        { "allow-parent-paths", '\0', 0, .b = &Args.allow_parent_paths },
     };
 
     argc--;
@@ -106,7 +106,7 @@ bool parse_args(int argc, char **argv)
                     if (on == 1 && i != argc) {
                         vals = &argv[i++];
                         numVals = 1;
-                    } else if (on == 2) {
+                    } else if (on == 3) {
                         vals = &argv[i];
                         for (; i != argc && argv[i][0] != '-'; i++) {
                             numVals++;
@@ -131,24 +131,24 @@ bool parse_args(int argc, char **argv)
                         arg);
                 return false;
             }
-            if (o->dest.b != NULL) {
-                *o->dest.b = true;
-            }
+            *o->b = true;
             break;
         case 1:
             if (numVals == 0) {
                 fprintf(stderr, "option '%s' expects one argument\n", arg);
                 return false;
             }
-            if (o->dest.s != NULL) {
-                *o->dest.s = vals[0];
-            }
+            *o->s = vals[0];
             break;
         case 2:
-            if (o->dest.v.p != NULL) {
-                *o->dest.v.p = vals;
-                *o->dest.v.n = numVals;
+            *o->b = true;
+            if (numVals == 1) {
+                *o->s = vals[0];
             }
+            break;
+        case 3:
+            *o->v.p = vals;
+            *o->v.n = numVals;
             break;
         }
     }
