@@ -25,15 +25,9 @@ bool parse_args(int argc, char **argv)
         } dest;
     } pArgs[] = {
         { "help", 'h', 0, { .b = &Args.needs_help } },
-        { "rebuild", 'B', 0, { .b = &Args.do_rebuild } },
-        { "usage", '\0', 0, { .b = NULL } },
-        { "execute", 'x', 0, { .b = &Args.do_execute } },
-        { "test", 't', 1, { .s = &Args.test } },
-        { "debug", 'g', 0, { .b = &Args.do_debug } },
-        { "auto", 'a', 0, { .b = &Args.do_auto } },
-        { "sources", 's', 2, { .v = { &Args.sources, &Args.num_sources } } },
-        { "build", 'b', 1, { .s = &Args.build } },
-        { "gcc-flags", '\0', 1, { .s = &Args.gcc_flags } },
+        { "config", 'c', 1, { .s = &Args.config } },
+        { "no-config", '\0', 0, { .b = &Args.no_config } },
+        { "allow-parent-paths", '\0', 0, { .b = &Args.allow_parent_paths } },
     };
 
     argc--;
