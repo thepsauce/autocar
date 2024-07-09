@@ -5,6 +5,8 @@
 #define FILE_TESTS 0x02
 #define FILE_OBJECTS 0x04
 
+#define FILE_HAS_MAIN 0x10
+
 #include <stdbool.h>
 #include <sys/stat.h>
 

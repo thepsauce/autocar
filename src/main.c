@@ -2,6 +2,7 @@
 #include "conf.h"
 #include "file.h"
 
+#include <bfd.h>
 #include <unistd.h>
 #include <stdlib.h>
 

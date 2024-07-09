@@ -1,6 +1,9 @@
 #ifndef ARGS_H
 #define ARGS_H
 
+#define PACKAGE "autocar"
+#define PACKAGE_VERSION "0.0.1"
+
 #include <stdbool.h>
 #include <stdio.h>
 

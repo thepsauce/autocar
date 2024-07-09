@@ -4,8 +4,10 @@
 #include "file.h"
 #include "conf.h"
 
+#include <bfd.h>
 #include <dirent.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -82,36 +84,118 @@ bool collect_tests(const char *path)
     return collect_files(path, FILE_TESTS);
 }
 
-static char *get_object_file(const char *path)
+/* changes the folder and extension of a file,
+ * the last two arguments may be null.
+ * examples:
+ * change_file("src/file.c", "build", "o") => "build/file.o"
+ * change_file("src/file.c", "build", NULL) => "build/file"
+ * change_file("src/file.c", NULL, "data") => "src/file.data"
+ * change_file("src/file.c", NULL, NULL) => "src/file"
+ * change_file("file.c", "say", "what") => "say/file.what"
+ *
+ * IMPORTANT: It is not allowed for a path to end or start with a slash!!
+ */
+static char *change_file(const char *path, const char *new_folder, const char *new_ext)
 {
-    char *o;
-    int n;
+    const char *folder;
+    const char *e, *ext;
+    size_t len_new_folder;
+    size_t len_new_ext;
+    char *s, *p;
 
-    n = asprintf(&o, "%s/%.*s.o", Config.build,
-            (int) (strlen(path) - 2), path);
-    if (n < 0) {
-        fprintf(stderr, "asprintf failed\n");
-        return NULL;
+    if (new_folder != NULL) {
+        folder = strchr(path, '/');
+        if (folder == NULL) {
+            folder = path;
+        } else {
+            folder++;
+        }
+    } else {
+        folder = path;
     }
-    return o;
+
+    e = strrchr(folder, '/');
+    ext = strrchr(folder, '.');
+    if (ext == NULL || (e != NULL && ext < e)) {
+        ext = folder + strlen(folder);
+    }
+
+    len_new_folder = new_folder == NULL ? 0 : strlen(new_folder);
+    len_new_ext = new_ext == NULL ? 0 : strlen(new_ext);
+
+    s = smalloc(len_new_folder + 1 + (ext - folder) + 1 + len_new_ext + 1);
+    p = s;
+    if (len_new_folder > 0) {
+        memcpy(p, new_folder, len_new_folder);
+        p += len_new_folder;
+        p[0] = '/';
+        p++;
+    }
+    memcpy(p, folder, ext - folder);
+    p += ext - folder;
+    if (new_ext == NULL) {
+        p[0] = '\0';
+    } else {
+        p[0] = '.';
+        p++;
+        strcpy(p, new_ext);
+    }
+    return s;
 }
 
 static int create_base_directory(/* const */char *path)
 {
     for (char *cur = path, *s; (s = strchr(cur, '/')) != NULL;) {
         s[0] = '\0';
-        LOG("mkdir '%s'", path);
+        DLOG("mkdir '%s'", path);
         if (mkdir(path, 0755) == -1) {
             if (errno != EEXIST) {
                 return -1;
             }
-            LOG(": exists");
+            DLOG(": exists");
         }
-        LOG("\n");
+        DLOG("\n");
         s[0] = '/';
         cur = s + 1;
     }
     return 0;
+}
+
+static bool object_has_main(const char *o)
+{
+    bfd *b;
+    long num_needed;
+    asymbol **symbol_table;
+    long num_symbols;
+
+    b = bfd_openr(o, NULL);
+    if (b == NULL) {
+        LOG("bfd_openr: %s\n", bfd_errmsg(bfd_get_error()));
+        return false;
+    }
+
+    if (!bfd_check_format(b, bfd_object)) {
+        LOG("%s is not an object file\n", o);
+        return false;
+    }
+
+    num_needed = bfd_get_symtab_upper_bound(b);
+    if (num_needed > 0) {
+        symbol_table = malloc(num_needed);
+        num_symbols = bfd_canonicalize_symtab(b, symbol_table);
+        for (long i = 0; i < num_symbols; i++) {
+            asymbol *const symbol = symbol_table[i];
+            if ((symbol->flags & BSF_FUNCTION) && strcmp(symbol->name, "main") == 0) {
+                free(symbol_table);
+                bfd_close(b);
+                return true;
+            }
+        }
+        free(symbol_table);
+    }
+
+    bfd_close(b);
+    return false;
 }
 
 bool compile_files(void)
@@ -121,6 +205,7 @@ bool compile_files(void)
     struct stat st;
     char *args[6 + Config.num_c_flags];
     int pid;
+    int wstatus;
 
     LOG("compiling sources/tests\n");
 
