@@ -25,22 +25,22 @@ int main(int argc, char **argv)
                 !check_config()) {
             return 1;
         }
-        LOG("CC = %s\n", Config.cc);
-        LOG("C_FLAGS = (");
+        DLOG("CC = %s\n", Config.cc);
+        DLOG("C_FLAGS = (");
         for (size_t i = 0; i < Config.num_c_flags; i++) {
             if (i > 0) {
-                LOG(" ");
+                DLOG(" ");
             }
-            LOG("%s", Config.c_flags[i]);
+            DLOG("%s", Config.c_flags[i]);
         }
-        LOG(")\nC_LIBS = (");
+        DLOG(")\nC_LIBS = (");
         for (size_t i = 0; i < Config.num_c_libs; i++) {
             if (i > 0) {
-                LOG(" ");
+                DLOG(" ");
             }
-            LOG("%s", Config.c_libs[i]);
+            DLOG("%s", Config.c_libs[i]);
         }
-        LOG(")\nSOURCES = %s\n"
+        DLOG(")\nSOURCES = %s\n"
                 "TESTS = %s\n"
                 "BUILD = %s\n"
                 "INTERVAL = %ld\n",
@@ -48,9 +48,7 @@ int main(int argc, char **argv)
                 Config.build, Config.interval);
     }
 
-    if (Args.verbose) {
-        fprintf(stderr, "up and running\n");
-    }
+    LOG("up and running\n");
 
     while (1) {
         Files.num = 0;
@@ -59,10 +57,10 @@ int main(int argc, char **argv)
                 collect_tests(Config.tests) &&
                 compile_files() &&
                 run_tests_and_compile_binaries())) {
-            LOG("did not reach the end\n");
+            DLOG("did not reach the end\n");
         }
         usleep(1000 * Config.interval);
-        LOG("\n");
+        DLOG("\n");
     }
 
     /* free resources */
@@ -86,7 +84,6 @@ int main(int argc, char **argv)
     free(Config.sources);
     free(Config.tests);
     free(Config.build);
-
     return 0;
 }
 

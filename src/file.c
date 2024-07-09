@@ -19,7 +19,7 @@ static struct file *add_file(unsigned flags, const char *path)
 {
     struct file *file;
 
-    LOG("add file: %s\n", path);
+    DLOG("add file: %s\n", path);
 
     Files.ptr = sreallocarray(Files.ptr,
             Files.num + 1, sizeof(*Files.ptr));
@@ -27,8 +27,7 @@ static struct file *add_file(unsigned flags, const char *path)
     file->flags = flags;
     file->path = sstrdup(path);
     if (stat(path, &file->st) == -1) {
-        fprintf(stderr, "stat '%s': %s\n",
-                path, strerror(errno));
+        LOG("stat '%s': %s\n", path, strerror(errno));
         return NULL;
     }
     return file;
@@ -43,11 +42,11 @@ static bool collect_files(const char *path, unsigned flags)
     size_t path_len;
     size_t name_len;
 
-    LOG("collect sources from: '%s'\n", path);
+    DLOG("collect sources from: '%s'\n", path);
 
     dir = opendir(path);
     if (dir == NULL) {
-        fprintf(stderr, "opendir: %s\n", strerror(errno));
+        LOG("opendir: %s\n", strerror(errno));
         return false;
     }
     path_len = strlen(path);
@@ -207,7 +206,7 @@ bool compile_files(void)
     int pid;
     int wstatus;
 
-    LOG("compiling sources/tests\n");
+    DLOG("compiling sources/tests\n");
 
     args[0] = Config.cc;
     for (size_t f = 0; f < Config.num_c_flags; f++) {

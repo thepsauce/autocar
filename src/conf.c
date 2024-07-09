@@ -18,7 +18,7 @@ bool find_autocar_config(const char *name_or_path)
     /* used to store "/\0" */
     char buf[2];
 
-    LOG("looking for config: %s\n", name_or_path);
+    DLOG("looking for config: %s\n", name_or_path);
 
     if (strchr(name_or_path, '/') != NULL) {
         if (stat(name_or_path, &st) != 0) {
@@ -307,7 +307,7 @@ bool source_config(const char *conf)
     FILE *fp, *pp;
     char *cmd;
 
-    LOG("source: %s\n", conf);
+    DLOG("source: %s\n", conf);
 
     fp = fopen(conf, "r");
     if (fp == NULL) {
@@ -320,7 +320,7 @@ bool source_config(const char *conf)
         if (cmd == NULL) {
             return false;
         }
-        LOG("has shebang: %s\n", cmd);
+        DLOG("has shebang: %s\n", cmd);
         pp = popen(cmd, "r");
         if (pp == NULL) {
             fprintf(stderr, "popen '%s': %s\n", cmd, strerror(errno));
