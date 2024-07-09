@@ -163,7 +163,7 @@ static int create_base_directory(/* const */char *path)
 static bool object_has_main(const char *o)
 {
     bfd *b;
-    long num_needed;
+    long size_needed;
     asymbol **symbol_table;
     long num_symbols;
 
@@ -178,9 +178,9 @@ static bool object_has_main(const char *o)
         return false;
     }
 
-    num_needed = bfd_get_symtab_upper_bound(b);
-    if (num_needed > 0) {
-        symbol_table = malloc(num_needed);
+    size_needed = bfd_get_symtab_upper_bound(b);
+    if (size_needed > 0) {
+        symbol_table = malloc(size_needed);
         num_symbols = bfd_canonicalize_symtab(b, symbol_table);
         for (long i = 0; i < num_symbols; i++) {
             asymbol *const symbol = symbol_table[i];
