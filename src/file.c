@@ -224,53 +224,98 @@ bool compile_files(void)
             continue;
         }
 
-        o = get_object_file(file->path);
-        LOG("%s: %s\n", file->path, o);
-        if (o == NULL) {
-            return false;
-        }
+        o = change_file(file->path, Config.build, "o");
+        DLOG("%s: %s\n", file->path, o);
+
         if (stat(o, &st) != 0 || file->st.st_mtime > st.st_mtime) {
             if (create_base_directory(o) == -1) {
                 return false;
             }
             args[Config.num_c_flags + 2] = file->path;
             args[Config.num_c_flags + 4] = o;
-            if (Args.verbose) {
-                for (size_t i = 0; i < ARRAY_SIZE(args) - 1; i++) {
-                    fprintf(stderr, "%s ", args[i]);
-                }
-                fprintf(stderr, "\n");
+            for (size_t i = 0; i < ARRAY_SIZE(args) - 1; i++) {
+                LOG("%s ", args[i]);
             }
+            LOG("\n");
 
             pid = fork();
             if (pid == 0) {
                 if (execvp(Config.cc, args) < 0) {
-                    fprintf(stderr, "execvp: %s\n", strerror(errno));
-                    return false;
+                    LOG("execvp: %s\n", strerror(errno));
+                    exit(1);
                 }
             } else {
-                waitpid(pid, NULL, 0);
+                waitpid(pid, &wstatus, 0);
+                if (WEXITSTATUS(wstatus) != 0) {
+                    return false;
+                }
             }
         } else {
-            LOG("nothing to be done\n");
+            DLOG("nothing to be done\n");
         }
-        add_file(FILE_OBJECTS, o);
+        add_file(FILE_SOURCE | FILE_OBJECTS |
+                (object_has_main(o) ? FILE_HAS_MAIN : 0), o);
         free(o);
     }
     return true;
 }
 
+static void get_objects_not_main(char ***pobjects, size_t *pnum)
+{
+    char **objects = NULL;
+    size_t num = 0;
+    for (size_t i = 0; i < Files.num; i++) {
+        struct file *const file = &Files.ptr[i];
+        if (!((file->flags & (FILE_SOURCE | FILE_OBJECTS)) ==
+                (FILE_SOURCE | FILE_OBJECTS))) {
+            continue;
+        }
+        if (file->flags & FILE_HAS_MAIN) {
+            continue;
+        }
+        objects = sreallocarray(objects, num + 1, sizeof(*objects));
+        objects[num++] = file->path;
+    }
+    *pobjects = objects;
+    *pnum = num;
+}
+
 bool run_tests_and_compile_binaries(void)
 {
     char *ext, *ext2;
-    char *o;
+    char *o, *exe;
+    char **objects;
+    size_t num_objects;
+    char *path_data, *path_input, *path_output;
+    FILE *data;
+    int pid;
+    int wstatus;
 
-    LOG("run tests\n");
+    DLOG("run tests\n");
+
+    get_objects_not_main(&objects, &num_objects);
+    /* gcc C_FLAGS OBJECTS MAIN_OBJECT -o DESTINATION C_LIBS NULL */
+    char *args[1 + Config.num_c_flags + num_objects + 3 + Config.num_c_libs + 1];
+    size_t argi = 0;
+
+    args[argi++] = (char*) "gcc";
+    for (size_t i = 0; i < Config.num_c_flags; i++) {
+        args[argi++] = Config.c_flags[i];
+    }
+    for (size_t i = 0; i < num_objects; i++) {
+        args[argi++] = objects[i];
+    }
+    args[argi++] = "<main object>";
+    args[argi++] = "-o";
+    args[argi++] = "<destination>";
+    for (size_t i = 0; i < Config.num_c_libs; i++) {
+        args[argi++] = Config.c_libs[i];
+    }
+    args[argi] = NULL;
+    free(objects);
 
     for (size_t i = 0; i < Files.num; i++) {
         struct file *const file = &Files.ptr[i];
-        FILE *data = NULL;
-        FILE *input = NULL;
 
         if (!(file->flags & FILE_TESTS)) {
             continue;
@@ -280,6 +325,8 @@ bool run_tests_and_compile_binaries(void)
             continue;
         }
 
+        path_data = NULL;
+        path_input = NULL;
         for (size_t j = 0; j < Files.num; j++) {
             struct file *const file2 = &Files.ptr[i];
             if (!(file2->flags & FILE_TESTS)) {
@@ -294,22 +341,81 @@ bool run_tests_and_compile_binaries(void)
             }
             ext2++;
             if (strcmp(ext2, "data") == 0) {
-                data = fopen(file2->path, "r");
+                path_data = file2->path;
             } else if (strcmp(ext2, "") == 0) {
-                input = fopen(file2->path, "r");
+                path_input = file2->path;
             } else {
                 continue;
             }
         }
 
-        o = get_object_file(file->path);
-        LOG("%s: %s\n", file->path, o);
-        if (data != NULL) {
-            fclose(data);
+        o = change_file(file->path, Config.build, "o");
+        exe = change_file(file->path, Config.build, NULL);
+        DLOG("%s : %s : %s\n", file->path, o, exe);
+
+        args[1 + Config.num_c_flags + num_objects] = o;
+        args[1 + Config.num_c_flags + num_objects + 2] = exe;
+        for (size_t i = 0; i < ARRAY_SIZE(args) - 1; i++) {
+            LOG("%s ", args[i]);
         }
-        if (input != NULL) {
-            fclose(input);
+        LOG("\n");
+        pid = fork();
+        if (pid == -1) {
+            LOG("fork: %s\n", strerror(errno));
+            free(exe);
+            free(o);
+            return false;
         }
+        if (pid == 0) {
+            execvp("gcc", args);
+        } else {
+            waitpid(pid, &wstatus, 0);
+            if (WEXITSTATUS(wstatus) != 0) {
+                free(exe);
+                free(o);
+                return false;
+            }
+        }
+
+        pid = fork();
+        if (pid == -1) {
+            LOG("fork: %s\n", strerror(errno));
+            free(exe);
+            free(o);
+            return false;
+        }
+        if (pid == 0) {
+            path_output = change_file(exe, NULL, "output");
+            if (freopen(path_output, "wb", stdout) == NULL) {
+                free(path_output);
+                LOG("freopen: %s\n", strerror(errno));
+                exit(1);
+            }
+            free(path_output);
+            if (path_input != NULL) {
+                if (freopen(path_input, "rb", stdin) == NULL) {
+                    LOG("freopen: %s\n", strerror(errno));
+                    exit(1);
+                }
+            }
+            char *args[2];
+            args[0] = (char*) exe;
+            args[1] = NULL;
+            if (execv(exe, args) == -1) {
+                LOG("execv: %s\n", strerror(errno));
+                exit(1);
+            }
+        } else {
+            waitpid(pid, &wstatus, 0);
+            if (WEXITSTATUS(wstatus) != 0) {
+                free(exe);
+                free(o);
+                return false;
+            }
+        }
+        (void) data;
+        (void) path_data;
+        free(exe);
         free(o);
     }
     return true;
