@@ -6,6 +6,8 @@
 
 struct program_arguments Args;
 
+bool LogNewLine = true;
+
 bool parse_args(int argc, char **argv)
 {
     struct opt {

@@ -21,19 +21,35 @@ extern struct program_arguments {
 bool parse_args(int argc, char **argv);
 void usage(FILE *fp, const char *programName);
 
+extern bool LogNewLine;
+
 #define DLOG(s, ...) do { \
+    const char *const _s = (s); \
     if (Args.verbosity != NULL && Args.verbosity[0] == 'd') { \
-        fprintf(stderr, "%s:%d: ", __FILE__, __LINE__); \
-        fprintf(stderr, (s), ##__VA_ARGS__); \
+        if (LogNewLine) { \
+            fprintf(stderr, "%s:%d: ", __FILE__, __LINE__); \
+            LogNewLine = false; \
+        } \
+        fprintf(stderr, _s, ##__VA_ARGS__); \
+    } \
+    if (_s[strlen(_s) - 1] == '\n') { \
+        LogNewLine = true; \
     } \
 } while (0)
 
 #define LOG(s, ...) do { \
+    const char *const _s = (s); \
     if (Args.verbosity != NULL && Args.verbosity[0] == 'd') { \
-        fprintf(stderr, "%s:%d: ", __FILE__, __LINE__); \
-        fprintf(stderr, (s), ##__VA_ARGS__); \
+        if (LogNewLine) { \
+            fprintf(stderr, "%s:%d: ", __FILE__, __LINE__); \
+            LogNewLine = false; \
+        } \
+        fprintf(stderr, _s, ##__VA_ARGS__); \
     } else if (Args.verbose) { \
-        fprintf(stderr, s, ##__VA_ARGS__); \
+        fprintf(stderr, _s, ##__VA_ARGS__); \
+    } \
+    if (_s[strlen(_s) - 1] == '\n') { \
+        LogNewLine = true; \
     } \
 } while (0)
 
