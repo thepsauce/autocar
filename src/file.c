@@ -253,24 +253,20 @@ bool compile_files(void)
         } else {
             DLOG("nothing to be done\n");
         }
-        add_file(FILE_SOURCE | FILE_OBJECTS |
+        add_file((file->flags & (FILE_SOURCE | FILE_TESTS)) | FILE_OBJECTS |
                 (object_has_main(o) ? FILE_HAS_MAIN : 0), o);
         free(o);
     }
     return true;
 }
 
-static void get_objects_not_main(char ***pobjects, size_t *pnum)
+static void get_objects(unsigned flags, char ***pobjects, size_t *pnum)
 {
     char **objects = NULL;
     size_t num = 0;
     for (size_t i = 0; i < Files.num; i++) {
         struct file *const file = &Files.ptr[i];
-        if (!((file->flags & (FILE_SOURCE | FILE_OBJECTS)) ==
-                (FILE_SOURCE | FILE_OBJECTS))) {
-            continue;
-        }
-        if (file->flags & FILE_HAS_MAIN) {
+        if ((file->flags ^ FILE_OBJECTS) != flags) {
             continue;
         }
         objects = sreallocarray(objects, num + 1, sizeof(*objects));
@@ -290,10 +286,13 @@ bool run_tests_and_compile_binaries(void)
     FILE *data;
     int pid;
     int wstatus;
+    char **main_objects;
+    size_t num_main_objects;
+    char *main_object;
 
     DLOG("run tests\n");
 
-    get_objects_not_main(&objects, &num_objects);
+    get_objects(FILE_SOURCE, &objects, &num_objects);
     /* gcc C_FLAGS OBJECTS MAIN_OBJECT -o DESTINATION C_LIBS NULL */
     char *args[1 + Config.num_c_flags + num_objects + 3 + Config.num_c_libs + 1];
     size_t argi = 0;
@@ -418,5 +417,47 @@ bool run_tests_and_compile_binaries(void)
         free(exe);
         free(o);
     }
+
+    /* link main program */
+    get_objects(FILE_SOURCE | FILE_HAS_MAIN,
+            &main_objects, &num_main_objects);
+    if (num_main_objects == 0) {
+        LOG("no main objects\n");
+        return false;
+    }
+    if (num_main_objects > 1) {
+        LOG("multiple main objects: ");
+        for (size_t i = 0; i < num_main_objects; i++) {
+            LOG("%s ", main_objects[i]);
+        }
+        LOG("\n");
+        free(main_objects);
+        return false;
+    }
+    main_object = main_objects[0];
+    free(main_objects);
+    exe = change_file(main_object, NULL, NULL);
+    args[1 + Config.num_c_flags + num_objects] = main_object;
+    args[1 + Config.num_c_flags + num_objects + 2] = exe;
+    for (size_t i = 0; i < ARRAY_SIZE(args) - 1; i++) {
+        LOG("%s ", args[i]);
+    }
+    LOG("\n");
+    pid = fork();
+    if (pid == -1) {
+        LOG("fork: %s\n", strerror(errno));
+        free(exe);
+        return false;
+    }
+    if (pid == 0) {
+        execvp("gcc", args);
+    } else {
+        waitpid(pid, &wstatus, 0);
+        if (WEXITSTATUS(wstatus) != 0) {
+            free(exe);
+            return false;
+        }
+    }
+    free(exe);
     return true;
 }
