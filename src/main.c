@@ -53,10 +53,7 @@ int main(int argc, char **argv)
     while (1) {
         Files.num = 0;
 
-        if (!(collect_sources(Config.sources) &&
-                collect_tests(Config.tests) &&
-                compile_files() &&
-                run_tests_and_compile_binaries())) {
+        if (!(compile_files() && link_binaries() && run_tests())) {
             DLOG("did not reach the end\n");
         }
         usleep(1000 * Config.interval);
@@ -65,7 +62,7 @@ int main(int argc, char **argv)
 
     /* free resources */
     for (size_t i = 0; i < Files.num; i++) {
-        free(Files.ptr[i].path);
+        free(Files.ptr[i].name);
     }
     free(Files.ptr);
 
