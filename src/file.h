@@ -7,14 +7,14 @@
 #define FILE_OUTPUT 0x8
 #define FILE_INPUT 0x10
 #define FILE_DATA 0x20
+#define FILE_EXEC 0x40
 #define FILE_TYPE_MASK 0xff
 
 #define FILE_TYPE(f) ((f) & FILE_TYPE_MASK)
 
 #define FILE_EXISTS 0x100
 #define FILE_HAS_MAIN 0x200
-#define FILE_HAS_UPDATE 0x400
-#define FILE_IS_TEST 0x0800
+#define FILE_IS_TEST 0x0400
 
 #define FILE_FLAGS(f) ((f) & ~FILE_TYPE_MASK)
 
@@ -29,7 +29,7 @@ struct file {
 };
 
 extern struct file_list {
-    struct file *ptr;
+    struct file **ptr;
     size_t num;
 } Files;
 

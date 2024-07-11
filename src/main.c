@@ -51,8 +51,6 @@ int main(int argc, char **argv)
     LOG("up and running\n");
 
     while (1) {
-        Files.num = 0;
-
         if (!(compile_files() && link_binaries() && run_tests())) {
             DLOG("did not reach the end\n");
         }
@@ -62,7 +60,9 @@ int main(int argc, char **argv)
 
     /* free resources */
     for (size_t i = 0; i < Files.num; i++) {
-        free(Files.ptr[i].name);
+        free(Files.ptr[i]->name);
+        free(Files.ptr[i]->path);
+        free(Files.ptr[i]);
     }
     free(Files.ptr);
 
