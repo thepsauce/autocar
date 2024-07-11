@@ -213,14 +213,15 @@ static int create_base_directory(/* const */char *path)
 {
     for (char *cur = path, *s; (s = strchr(cur, '/')) != NULL;) {
         s[0] = '\0';
-        DLOG("mkdir '%s'", path);
         if (mkdir(path, 0755) == -1) {
             if (errno != EEXIST) {
+                LOG("mkdir '%s': %s\n", path, strerror(errno));
                 return -1;
             }
-            DLOG(": exists");
+            DLOG("mkdir '%s': exists\n", path);
+        } else {
+            DLOG("mkdir '%s'\n", path);
         }
-        DLOG("\n");
         s[0] = '/';
         cur = s + 1;
     }

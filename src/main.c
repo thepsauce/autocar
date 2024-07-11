@@ -25,8 +25,7 @@ int main(int argc, char **argv)
                 !check_config()) {
             return 1;
         }
-        DLOG("CC = %s\n", Config.cc);
-        DLOG("C_FLAGS = (");
+        DLOG("CC = %s\nC_FLAGS = (", Config.cc);
         for (size_t i = 0; i < Config.num_c_flags; i++) {
             if (i > 0) {
                 DLOG(" ");
