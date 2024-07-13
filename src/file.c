@@ -15,9 +15,58 @@
 
 struct file_list Files;
 
-static struct file *add_file(const char *path);
+/**
+ * @brief Translates a file extension to an integer.
+ *
+ * @see conf.h
+ *
+ * @return Extension type integer (`EXT_TYPE_*`)
+ */
+static int get_extension_type(const char *e)
+{
+    char *ext, *end;
+    bool repl;
+    int cmp;
 
-static struct file *search_file(const char *name, unsigned flags, size_t *pIndex)
+    for (int i = 0; i < EXT_TYPE_MAX; i++) {
+        ext = Config.exts[i];
+        while (ext[0] != '\0') {
+            end = ext;
+            while (end[0] != '\0' && end[0] != '|') {
+                end++;
+            }
+            if (end[0] == '|') {
+                repl = true;
+                end[0] = '\0';
+            } else {
+                repl = false;
+            }
+            cmp = strcmp(e, ext);
+            if (repl) {
+                end[0] = '|';
+            }
+            if (cmp == 0) {
+                return i;
+            }
+            if (end[0] == '\0') {
+                break;
+            }
+            ext = end + 1;
+        }
+    }
+    return -1;
+}
+
+/**
+ * @brief Finds a file corresponding to given parameters.
+ *
+ * The `pIndex` parameter can be used to insert the next element, the file list
+ * is sorted at all times and adding a new file not already contained at the
+ * index will keep it sorted.
+ *
+ * @return NULL if file was not found, otherwise a pointer to the file.
+ */
+static struct file *search_file(int folder, const char *name, int type, size_t *pIndex)
 {
     size_t l, r;
     int cmp;
@@ -30,8 +79,10 @@ static struct file *search_file(const char *name, unsigned flags, size_t *pIndex
         struct file *const file = Files.ptr[m];
         cmp = strcmp(file->name, name);
         if (cmp == 0) {
-            cmp = (int) (file->flags & FILE_TYPE_MASK) -
-                (int) (flags & FILE_TYPE_MASK);
+            cmp = file->folder - folder;
+        }
+        if (cmp == 0) {
+            cmp = file->type - type;
         }
         if (cmp == 0) {
             if (pIndex != NULL) {
@@ -51,125 +102,127 @@ static struct file *search_file(const char *name, unsigned flags, size_t *pIndex
     return NULL;
 }
 
-static int get_path_flags(const char *path, char **pname, unsigned *pflags)
+/**
+ * @brief Update the `st` member and un-/set FLAG_EXISTS.
+ *
+ * Sets the `st` member of given file using `stat()` and sets FLAG_EXISTS for
+ * all files successfully stat'ed.
+ *
+ * Files that have no extension (assumed to be executables) must have execute
+ * permissions, otherwise they are not seen as existing.
+ */
+static void stat_file(struct file *file)
 {
-    const char *ext;
-    const char *folder;
-    size_t folder_len;
-    size_t len;
-    char *name;
-    unsigned flags;
+    struct stat st;
 
-    ext = strrchr(path, '.');
-    if (ext == NULL) {
-        flags = FILE_EXEC;
-        ext = path + strlen(path);
+    if (stat(file->path, &st) == 0 && (file->type != EXT_TYPE_EXECUTABLE ||
+                (st.st_mode & S_IXUSR))) {
+        file->flags |= FLAG_EXISTS;
+        file->st = st;
     } else {
-        if (ext[1] == '\0') {
-            return 1;
-        }
-
-        if (ext[2] == '\0') {
-            switch (ext[1]) {
-            case 'c':
-                flags = FILE_SOURCE;
-                break;
-            case 'h':
-                flags = FILE_HEADER;
-                break;
-            case 'o':
-                flags = FILE_OBJECT;
-                break;
-            default:
-                return 1;
-            }
-        } else {
-            if (strcmp(&ext[1], "data") != 0) {
-                flags = FILE_DATA;
-            } else if (strcmp(&ext[1], "input") != 0) {
-                flags = FILE_INPUT;
-            } else if (strcmp(&ext[1], "output") != 0) {
-                flags = FILE_OUTPUT;
-            } else {
-                return 1;
-            }
-        }
+        file->flags &= ~FLAG_EXISTS;
     }
-
-    folder = strchr(path, '/');
-    if (folder != NULL) {
-        folder_len = folder - path;
-        if (len = strlen(Config.build), folder_len == len &&
-                memcmp(path, Config.build, len) == 0) {
-            path = folder + 1;
-            folder = strchr(path, '/');
-        }
-
-        if (folder != NULL) {
-            folder_len = folder - path;
-            if (len = strlen(Config.tests), folder_len == len &&
-                    memcmp(path, Config.tests, len) == 0) {
-                flags |= FILE_IS_TEST;
-            }
-            name = smalloc(ext - folder);
-            memcpy(name, folder + 1, ext - folder - 1);
-            name[ext - folder - 1] = '\0';
-        }
-    } /* not else */
-    if (folder == NULL) {
-        name = smalloc(ext - path + 1);
-        memcpy(name, path, ext - path);
-        name[ext - path] = '\0';
-    }
-    *pname = name;
-    *pflags = flags;
-    return 0;
 }
 
-static bool run_executable(char **args)
+/**
+ * @brief Makes a file object and adds it to the file list.
+ *
+ * Checks if a file with given parameters already exists and returns this file,
+ * it also uses `stat_file()` on it. If it does not exist, it makes a file using
+ * given `folder`, `name` and `type`, constructs the `path` and then adds this
+ * to the file list.
+ *
+ * @return The allocated file.
+ */
+static struct file *add_file(int folder, const char *name, int type)
 {
-    int pid;
-    int wstatus;
+    size_t index;
+    struct file *file;
+    char *folder_str;
+    char *type_str, *end;
+    bool repl_bar;
+    char *path;
 
-    for (char **a = args; *a != NULL; a++) {
-        LOG("%s ", a[0]);
-    }
-    LOG("\n");
+    DLOG("adding file: %s/%s (%d)\n", Config.folders[folder], name, type);
 
-    pid = fork();
-    if (pid == -1) {
-        LOG("fork: %s\n", strerror(errno));
-        return false;
+    file = search_file(folder, name, type, &index);
+    if (file != NULL) {
+        DLOG("file already existed\n");
+        stat_file(file);
+        return file;
     }
-    if (pid == 0) {
-        dup2(STDOUT_FILENO, STDERR_FILENO);
-        if (execvp(args[0], args) < 0) {
-            LOG("execvp: %s\n", strerror(errno));
-            exit(1);
-        }
+
+    folder_str = Config.folders[folder];
+    type_str = Config.exts[type];
+    end = type_str;
+    while (end[0] != '|' && end[0] != '\0') {
+        end++;
+    }
+    path = smalloc(strlen(folder_str) + 1 + strlen(name) + strlen(type_str) + 1);
+    if (end[0] == '|') {
+        end[0] = '\0';
+        repl_bar = true;
     } else {
-        waitpid(pid, &wstatus, 0);
-        if (WEXITSTATUS(wstatus) != 0) {
-            LOG("%s returned: %d\n", args[0], wstatus);
+        repl_bar = false;
+    }
+    sprintf(path, "%s/%s%s", folder_str, name, type_str);
+    if (repl_bar) {
+        end[0] = '|';
+    }
+
+    file = scalloc(1, sizeof(*file));
+    file->folder = folder;
+    file->type = type;
+    file->name = sstrdup(name);
+    file->path = path;
+    stat_file(file);
+    Files.ptr = sreallocarray(Files.ptr, Files.num + 1, sizeof(*Files.ptr));
+    memmove(&Files.ptr[index + 1], &Files.ptr[index],
+            sizeof(*Files.ptr) * (Files.num - index));
+    Files.ptr[index] = file;
+    Files.num++;
+    return file;
+}
+
+bool collect_files(void)
+{
+    char *folder;
+    DIR *dir;
+    struct dirent *ent;
+    char *ext;
+    int type;
+
+    for (int i = 0; i <= FOLDER_TEST; i++) {
+        folder = Config.folders[i];
+        DLOG("collect sources from: '%s'\n", folder);
+
+        dir = opendir(folder);
+        if (dir == NULL) {
+            LOG("opendir: %s\n", strerror(errno));
             return false;
         }
+        while (ent = readdir(dir), ent != NULL) {
+            if (ent->d_type != DT_REG) {
+                continue;
+            }
+            ext = strrchr(ent->d_name, '.');
+            if (ext == NULL) {
+                continue;
+            }
+            type = get_extension_type(ext);
+            if (type == -1) {
+                continue;
+            }
+            char name[strlen(ent->d_name) + 1];
+            memcpy(name, ent->d_name, ext - ent->d_name);
+            name[ext - ent->d_name] = '\0';
+            add_file(i, name, type);
+        }
+
+        closedir(dir);
     }
+
     return true;
-}
-
-static char *get_build_file_path(struct file *file)
-{
-    char *path;
-    char *folder;
-
-    if (file->flags & FILE_IS_TEST) {
-        folder = Config.tests;
-    } else {
-        folder = Config.sources;
-    }
-    path = smalloc(strlen(Config.build) + 1 + strlen(folder) + 1 + strlen(file->name) + 3);
-    sprintf(path, "%s/%s/%s.%s", Config.build, folder, file->name, "o");
-    return path;
 }
 
 static bool object_has_main(const char *o)
@@ -209,186 +262,87 @@ static bool object_has_main(const char *o)
     return false;
 }
 
-static int create_base_directory(/* const */char *path)
+static bool run_executable(char **args)
 {
-    for (char *cur = path, *s; (s = strchr(cur, '/')) != NULL;) {
-        s[0] = '\0';
-        if (mkdir(path, 0755) == -1) {
-            if (errno != EEXIST) {
-                LOG("mkdir '%s': %s\n", path, strerror(errno));
-                return -1;
-            }
-            DLOG("mkdir '%s': exists\n", path);
-        } else {
-            DLOG("mkdir '%s'\n", path);
-        }
-        s[0] = '/';
-        cur = s + 1;
+    int pid;
+    int wstatus;
+
+    for (char **a = args; a[0] != NULL; a++) {
+        LOG("%s ", a[0]);
     }
-    return 0;
-}
+    LOG("\n");
 
-static bool compile_file(struct file *file)
-{
-    char *args[6 + Config.num_c_flags];
-    char *path;
-    struct file *obj;
-
-    path = get_build_file_path(file);
-    obj = add_file(path);
-    free(path);
-    if (obj->st.st_mtime >= file->st.st_mtime) {
+    pid = fork();
+    if (pid == -1) {
+        LOG("fork: %s\n", strerror(errno));
         return false;
     }
+    if (pid == 0) {
+        dup2(STDOUT_FILENO, STDERR_FILENO);
+        if (execvp(args[0], args) < 0) {
+            LOG("execvp: %s\n", strerror(errno));
+            exit(1);
+        }
+    } else {
+        waitpid(pid, &wstatus, 0);
+        if (WEXITSTATUS(wstatus) != 0) {
+            LOG("%s returned: %d\n", args[0], wstatus);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool rebuild_object(struct file *src, struct file *obj)
+{
+    char *args[6 + Config.num_c_flags];
 
     args[0] = Config.cc;
     for (size_t f = 0; f < Config.num_c_flags; f++) {
         args[f + 1] = Config.c_flags[f];
     }
     args[Config.num_c_flags + 1] = (char*) "-c";
-    args[Config.num_c_flags + 2] = file->path;
+    args[Config.num_c_flags + 2] = src->path;
     args[Config.num_c_flags + 3] = (char*) "-o";
     args[Config.num_c_flags + 4] = obj->path;
     args[Config.num_c_flags + 5] = NULL;
-    if (create_base_directory(obj->path) == -1) {
-        return false;
-    }
     if (!run_executable(args)) {
         return false;
     }
-    return true;
-}
-
-static struct file *add_file(const char *path)
-{
-    char *name;
-    unsigned flags;
-    size_t index;
-    struct file *file;
-    struct stat st;
-
-    DLOG("add file: %s\n", path);
-
-    if (get_path_flags(path, &name, &flags) != 0) {
-        return NULL;
-    }
-
-    file = search_file(name, flags, &index);
-    if (file != NULL) {
-        DLOG("file was already cached\n");
-        if (stat(path, &st) == -1) {
-            file->flags &= ~FILE_EXISTS;
-        } else {
-            file->flags |= FILE_EXISTS;
-            file->st = st;
-        }
+    if (object_has_main(obj->path)) {
+        obj->flags |= FLAG_HAS_MAIN;
     } else {
-        Files.ptr = sreallocarray(Files.ptr,
-                Files.num + 1, sizeof(*Files.ptr));
-        memmove(&Files.ptr[index + 1], &Files.ptr[index],
-                sizeof(*Files.ptr) * (Files.num - index));
-        file = smalloc(sizeof(*file));
-        Files.ptr[index] = file;
-        Files.num++;
-        file->flags = flags;
-        file->name = name;
-        file->path = sstrdup(path);
-        file->st.st_mtime = 0;
-        if (stat(path, &file->st) == -1) {
-            file->flags &= ~FILE_EXISTS;
-        } else {
-            file->flags |= FILE_EXISTS;
-            if (file->flags & FILE_OBJECT) {
-                if (object_has_main(file->path)) {
-                    file->flags |= FILE_HAS_MAIN;
-                } else {
-                    file->flags &= ~FILE_HAS_MAIN;
-                }
-            }
-        }
-    }
-
-    if ((file->flags & (FILE_SOURCE | FILE_EXISTS)) ==
-            (FILE_SOURCE | FILE_EXISTS)) {
-        compile_file(file);
-    }
-    return file;
-}
-
-bool compile_files(void)
-{
-    char *paths[2];
-    char *path;
-    DIR *dir;
-    struct dirent *ent;
-    char *s;
-    size_t n;
-    size_t path_len;
-    size_t name_len;
-
-    paths[0] = Config.sources;
-    paths[1] = Config.tests;
-    for (size_t i = 0; i < ARRAY_SIZE(paths); i++) {
-        path = paths[i];
-        DLOG("collect sources from: '%s'\n", path);
-
-        dir = opendir(path);
-        if (dir == NULL) {
-            LOG("opendir: %s\n", strerror(errno));
-            return false;
-        }
-        path_len = strlen(path);
-
-        n = path_len + 1 + 32 + 1;
-        s = smalloc(n);
-        memcpy(s, path, path_len);
-        s[path_len++] = '/';
-        while ((ent = readdir(dir)) != NULL) {
-            if (ent->d_type != DT_REG) {
-                continue;
-            }
-            name_len = strlen(ent->d_name);
-            if (path_len + 1 + name_len + 1 > n) {
-                n += name_len;
-                s = srealloc(s, n);
-            }
-            strcpy(&s[path_len], ent->d_name);
-            add_file(s);
-        }
-        free(s);
-
-        closedir(dir);
+        obj->flags &= ~FLAG_HAS_MAIN;
     }
     return true;
 }
 
-static void get_objects(unsigned flags, struct file ***pobjects, size_t *pnum)
+bool build_objects(void)
 {
-    struct file **objects = NULL;
-    size_t num = 0;
+    struct file *obj, *file;
 
     for (size_t i = 0; i < Files.num; i++) {
-        struct file *const file = Files.ptr[i];
-        if (FILE_TYPE(file->flags) != FILE_OBJECT) {
-            continue;
+        file = Files.ptr[i];
+        if (file->type == EXT_TYPE_SOURCE) {
+            obj = add_file(file->folder + FOLDER_BUILD + 1,
+                    file->name, EXT_TYPE_OBJECT);
+            if (!(obj->flags & FLAG_EXISTS) ||
+                    file->st.st_mtime > obj->st.st_mtime) {
+                rebuild_object(file, obj);
+            }
         }
-        if (FILE_FLAGS(file->flags) != flags) {
-            continue;
-        }
-        objects = sreallocarray(objects, num + 1, sizeof(*objects));
-        objects[num++] = file;
     }
-    *pobjects = objects;
-    *pnum = num;
+    return true;
 }
 
-static bool link_program(struct file *exe, struct file **objects, size_t num_objects,
+static bool relink_executable(struct file *exec,
+        struct file **objects, size_t num_objects,
         struct file *main_object)
 {
     char *args[1 + Config.num_c_flags + num_objects + 3 + Config.num_c_libs + 1];
     size_t argi = 0;
 
-    args[argi++] = (char*) "gcc";
+    args[argi++] = Config.cc;
     for (size_t i = 0; i < Config.num_c_flags; i++) {
         args[argi++] = Config.c_flags[i];
     }
@@ -397,7 +351,7 @@ static bool link_program(struct file *exe, struct file **objects, size_t num_obj
     }
     args[argi++] = main_object->path;
     args[argi++] = "-o";
-    args[argi++] = exe->path;
+    args[argi++] = exec->path;
     for (size_t i = 0; i < Config.num_c_libs; i++) {
         args[argi++] = Config.c_libs[i];
     }
@@ -408,60 +362,160 @@ static bool link_program(struct file *exe, struct file **objects, size_t num_obj
     return true;
 }
 
-static char *get_exe_file_path(struct file *file)
+bool link_executables(void)
 {
-    char *path;
-    char *folder;
+    struct file *file;
+    struct file **objects = NULL;
+    size_t num_objects = 0;
+    time_t latest_time = 0;
+    struct file *exec;
 
-    if (file->flags & FILE_IS_TEST) {
-        folder = Config.tests;
-    } else {
-        folder = Config.sources;
-    }
-    path = smalloc(strlen(Config.build) + 1 + strlen(folder) + 1 + strlen(file->name) + 1);
-    sprintf(path, "%s/%s/%s", Config.build, folder, file->name);
-    return path;
-}
-
-bool link_binaries(void)
-{
-    char *path_exe;
-    struct file *exe;
-    struct file **objects;
-    size_t num_objects;
-    bool up;
-    bool r = true;
-
-    get_objects(FILE_EXISTS, &objects, &num_objects);
     for (size_t i = 0; i < Files.num; i++) {
-        struct file *const file = Files.ptr[i];
-        if (!(file->flags & FILE_HAS_MAIN)) {
-            continue;
+        file = Files.ptr[i];
+        if (file->type == EXT_TYPE_OBJECT && !(file->flags & FLAG_HAS_MAIN)) {
+            latest_time = MAX(latest_time, file->st.st_mtime);
+            objects = sreallocarray(objects, num_objects + 1, sizeof(*objects));
+            objects[num_objects++] = file;
         }
-        path_exe = get_exe_file_path(file);
-        exe = add_file(path_exe);
-        up = false;
-        if (file->st.st_mtime > exe->st.st_mtime) {
-            up = true;
-        } else {
-            for (size_t j = 0; j < num_objects; j++) {
-                if (objects[j]->st.st_mtime > exe->st.st_mtime) {
-                    up = true;
-                    break;
-                }
+    }
+
+    for (size_t i = 0; i < Files.num; i++) {
+        file = Files.ptr[i];
+        if (file->flags & FLAG_HAS_MAIN) {
+            exec = add_file(file->folder, file->name, EXT_TYPE_EXECUTABLE);
+            if (!(exec->flags & FLAG_EXISTS) ||
+                    MAX(latest_time, file->st.st_mtime) > exec->st.st_mtime) {
+                relink_executable(exec, objects, num_objects, file);
             }
         }
-        if (up) {
-            r &= link_program(exe, objects, num_objects, file);
-        }
-        free(path_exe);
     }
+
     free(objects);
-    return r;
+    return true;
 }
 
 bool run_tests(void)
 {
-    /* TODO: */
+    struct file *file;
+    char *input_path, *output_path, *data_path;
+    int s;
+    struct stat st;
+    bool update;
+    char *args[4];
+    int pid;
+    int wstatus;
+    int c;
+    FILE *fp;
+
+    for (size_t i = 0; i < Files.num; i++) {
+        file = Files.ptr[i];
+        if (file->type != EXT_TYPE_EXECUTABLE || file->folder != FOLDER_BUILD_TEST) {
+            continue;
+        }
+
+        update = false;
+
+        if (asprintf(&input_path, "%s/%s.input",
+                    Config.folders[FOLDER_TEST], file->name) == -1) {
+            fprintf(stderr, "asprintf: %s\n", strerror(errno));
+            exit(1);
+        }
+        s = stat(input_path, &st);
+        if (s == 0 && st.st_mtime > file->last_input) {
+            update = true;
+        } else if (s == -1 && file->last_input != 0) {
+            free(input_path);
+            input_path = NULL;
+            file->last_input = 0;
+        }
+
+        if (asprintf(&data_path, "%s/%s.data",
+                    Config.folders[FOLDER_TEST], file->name) == -1) {
+            fprintf(stderr, "asprintf: %s\n", strerror(errno));
+            exit(1);
+        }
+        s = stat(input_path, &st);
+        if (s == 0 && st.st_mtime > file->last_input) {
+            update = true;
+        } else if (s == -1 && file->last_input != 0) {
+            free(data_path);
+            data_path = NULL;
+            file->last_input = 0;
+        }
+
+        if (asprintf(&output_path, "%s/%s.output",
+                    Config.folders[FOLDER_TEST], file->name) == -1) {
+            fprintf(stderr, "asprintf: %s\n", strerror(errno));
+            exit(1);
+        }
+        if (!update) {
+            s = stat(output_path, &st);
+            update = (s == 0 && st.st_mtime < file->st.st_mtime) ||
+                s == -1;
+        }
+
+        pid = fork();
+        if (pid == -1) {
+            LOG("fork: %s\n", strerror(errno));
+            goto err;
+        }
+        if (pid == 0) {
+            if (freopen(output_path, "wb", stdout) == NULL) {
+                LOG("freopen '%s' stdout: %s\n", output_path, strerror(errno));
+                exit(1);
+            }
+            if (input_path != NULL) {
+                printf("%s\n", input_path);
+                if (freopen(input_path, "rb", stdin) == NULL) {
+                    LOG("freopen '%s' stdin: %s\n", input_path, strerror(errno));
+                    exit(1);
+                }
+            }
+            args[0] = file->path;
+            args[1] = NULL;
+            LOG("run %s\n", file->path);
+            if (execv(file->path, args) == -1) {
+                LOG("execv: %s\n", strerror(errno));
+                exit(1);
+            }
+        } else {
+            waitpid(pid, &wstatus, 0);
+            if (WEXITSTATUS(wstatus) != 0) {
+                LOG("%s returned: %d\n", file->path, wstatus);
+                goto err;
+            }
+        }
+
+        fprintf(stderr, "| %s |\n", output_path);
+        if (data_path != NULL) {
+            args[0] = Config.diff;
+            args[1] = data_path;
+            args[2] = output_path;
+            args[3] = NULL;
+            if (!run_executable(args)) {
+                goto err;
+            }
+        } else {
+            fp = fopen(output_path, "rb");
+            if (fp != NULL) {
+                while (c = fgetc(fp), c != EOF) {
+                    fputc(c, stderr);
+                }
+                fclose(fp);
+                if (c != '\n') {
+                    fputc('\n', stderr);
+                }
+            }
+        }
+        free(input_path);
+        free(data_path);
+        free(output_path);
+    }
+    return true;
+
+err:
+    free(input_path);
+    free(data_path);
+    free(output_path);
     return false;
 }

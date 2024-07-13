@@ -175,12 +175,36 @@ static int set_conf(const char *name, const char *value)
         }
         break;
 
+    case 'd':
+    case 'D':
+        if (strcasecmp(&name[1], "iff") != 0) {
+            return 1;
+        }
+        Config.diff = sstrdup(value);
+        break;
+
+    case 'e':
+    case 'E':
+        if (name[1] != 'x' || name[2] != 't' || name[3] != '_') {
+            return 1;
+        }
+        if (strcasecmp(&name[4], "source") == 0) {
+            Config.exts[EXT_TYPE_SOURCE] = sstrdup(value);
+        } else if (strcasecmp(&name[4], "header") == 0) {
+            Config.exts[EXT_TYPE_HEADER] = sstrdup(value);
+        } else if (strcasecmp(&name[4], "build") == 0) {
+            Config.exts[EXT_TYPE_OBJECT] = sstrdup(value);
+        } else {
+            return 1;
+        }
+        break;
+
     case 's':
     case 'S':
         if (strcasecmp(&name[1], "ources") != 0) {
             return 1;
         }
-        rel = &Config.sources;
+        rel = &Config.folders[FOLDER_SOURCE];
         break;
 
     case 't':
@@ -188,7 +212,7 @@ static int set_conf(const char *name, const char *value)
         if (strcasecmp(&name[1], "ests") != 0) {
             return 1;
         }
-        rel = &Config.tests;
+        rel = &Config.folders[FOLDER_TEST];
         break;
 
     case 'b':
@@ -196,7 +220,7 @@ static int set_conf(const char *name, const char *value)
         if (strcasecmp(&name[1], "uild") != 0) {
             return 1;
         }
-        rel = &Config.build;
+        rel = &Config.folders[FOLDER_BUILD];
         break;
 
     case 'i':
@@ -216,6 +240,15 @@ static int set_conf(const char *name, const char *value)
     return 0;
 }
 
+/**
+ * Parses a config file in the format:
+ * <Variable> = <Value>
+ * .
+ * .
+ * .
+ * It uses `set_conf()` to set valid variable names, invalid names that do not
+ * exist in the config are ignored.
+ */
 static bool parse_config(FILE *fp)
 {
     char *line = NULL;
@@ -340,53 +373,74 @@ bool source_config(const char *conf)
 
 bool check_config(void)
 {
+    static const char *default_folders[] = {
+        [FOLDER_SOURCE] = "src",
+        [FOLDER_TEST] = "tests",
+        [FOLDER_EXTERNAL] = ".",
+        [FOLDER_BUILD] = "build",
+    };
+    static const char *default_extensions[] = {
+        [EXT_TYPE_SOURCE] = ".c",
+        [EXT_TYPE_HEADER] = ".h",
+        [EXT_TYPE_OBJECT] = ".o",
+        [EXT_TYPE_EXECUTABLE] = "",
+    };
     struct stat st;
-    const char *check[3];
 
     if (Config.cc == NULL) {
         Config.cc = sstrdup("gcc");
     }
+    if (Config.diff == NULL) {
+        Config.diff = sstrdup("diff");
+    }
     if (Config.c_flags == NULL) {
         Config.c_flags = sstrdup("-g -fsanitize=address -Wall -Wextra -Werror");
     }
-    if (Config.sources == NULL) {
-        Config.sources = sstrdup("src");
+
+    for (int i = 0; i <= FOLDER_BUILD; i++) {
+        if (Config.folders[i] == NULL) {
+            Config.folders[i] = sstrdup(default_folders[i]);
+        }
     }
-    if (Config.tests == NULL) {
-        Config.tests = sstrdup("tests");
+    for (int i = FOLDER_BUILD + 1; i < FOLDER_MAX; i++) {
+        char *f, *b, *s;
+
+        f = Config.folders[i - FOLDER_BUILD - 1];
+        b = Config.folders[FOLDER_BUILD];
+        s = smalloc(strlen(b) + 1 + strlen(f) + 1);
+        sprintf(s, "%s/%s", b, f);
+        Config.folders[i] = s;
     }
-    if (Config.build == NULL) {
-        Config.build = sstrdup("build");
+
+    for (int i = 0; i < EXT_TYPE_MAX; i++) {
+        if (Config.exts[i] == NULL) {
+            Config.exts[i] = sstrdup(default_extensions[i]);
+        }
     }
     if (Config.interval < 0) {
-        fprintf(stderr, "invalid interval value: %ld\n",
-                Config.interval);
+        fprintf(stderr, "invalid interval value: %ld\n", Config.interval);
         return false;
     }
     if (Config.interval == 0) {
         Config.interval = 100;
     }
 
-    check[0] = Config.sources;
-    check[1] = Config.tests;
-    check[2] = Config.build;
-    for (size_t i = 0; i < ARRAY_SIZE(check); i++) {
-        if (stat(check[i], &st) != 0) {
+    for (int i = 0; i < FOLDER_MAX; i++) {
+        char *const folder = Config.folders[i];
+        if (stat(folder, &st) != 0) {
             if (errno == ENOENT) {
-                if (mkdir(check[i], 0755) == -1) {
+                if (mkdir(folder, 0755) == -1) {
                     fprintf(stderr, "mkdir '%s': %s\n",
-                            check[i], strerror(errno));
+                            folder, strerror(errno));
                     return false;
                 }
                 continue;
             }
-            fprintf(stderr, "stat '%s': %s\n",
-                    check[i], strerror(errno));
+            fprintf(stderr, "stat '%s': %s\n", folder, strerror(errno));
             return false;
         }
         if (!S_ISDIR(st.st_mode)) {
-            fprintf(stderr, "'%s' must be a directory\n",
-                    check[i]);
+            fprintf(stderr, "'%s' must be a directory\n", folder);
             return false;
         }
     }

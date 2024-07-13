@@ -42,16 +42,28 @@ int main(int argc, char **argv)
         DLOG(")\nSOURCES = %s\n"
                 "TESTS = %s\n"
                 "BUILD = %s\n"
+                "BUILD_SOURCE = %s\n"
+                "BUILD_TEST = %s\n"
                 "INTERVAL = %ld\n",
-                Config.sources, Config.tests,
-                Config.build, Config.interval);
+                Config.folders[FOLDER_SOURCE],
+                Config.folders[FOLDER_TEST],
+                Config.folders[FOLDER_BUILD],
+                Config.folders[FOLDER_BUILD_SOURCE],
+                Config.folders[FOLDER_BUILD_TEST],
+                Config.interval);
     }
 
     LOG("up and running\n");
 
     while (1) {
-        if (!(compile_files() && link_binaries() && run_tests())) {
-            DLOG("did not reach the end\n");
+        if (!collect_files()) {
+            DLOG("0: did not reach the end\n");
+        } else if (!build_objects()) {
+            DLOG("1: did not reach the end\n");
+        } else if (!link_executables()) {
+            DLOG("2: did not reach the end\n");
+        } else if (!run_tests()) {
+            DLOG("3: did not reach the end\n");
         }
         usleep(1000 * Config.interval);
         DLOG("\n");
@@ -59,9 +71,10 @@ int main(int argc, char **argv)
 
     /* free resources */
     for (size_t i = 0; i < Files.num; i++) {
-        free(Files.ptr[i]->name);
-        free(Files.ptr[i]->path);
-        free(Files.ptr[i]);
+        struct file *const file = Files.ptr[i];
+        free(file->name);
+        free(file->path);
+        free(file);
     }
     free(Files.ptr);
 
@@ -77,9 +90,11 @@ int main(int argc, char **argv)
     }
     free(Config.c_libs);
 
-    free(Config.sources);
-    free(Config.tests);
-    free(Config.build);
+    for (int i = 0; i < FOLDER_MAX; i++) {
+        free(Config.folders[i]);
+    }
+    for (int i = 0; i < EXT_TYPE_MAX; i++) {
+        free(Config.exts[i]);
+    }
     return 0;
 }
-

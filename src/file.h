@@ -1,40 +1,64 @@
 #ifndef FILE_H
 #define FILE_H
 
-#define FILE_SOURCE 0x01
-#define FILE_HEADER 0x02
-#define FILE_OBJECT 0x04
-#define FILE_OUTPUT 0x8
-#define FILE_INPUT 0x10
-#define FILE_DATA 0x20
-#define FILE_EXEC 0x40
-#define FILE_TYPE_MASK 0xff
-
-#define FILE_TYPE(f) ((f) & FILE_TYPE_MASK)
-
-#define FILE_EXISTS 0x100
-#define FILE_HAS_MAIN 0x200
-#define FILE_IS_TEST 0x0400
-
-#define FILE_FLAGS(f) ((f) & ~FILE_TYPE_MASK)
+/// if the file exists on the file system
+#define FLAG_EXISTS 0x1
+/// if the object has a function called `main()`
+#define FLAG_HAS_MAIN 0x2
 
 #include <stdbool.h>
 #include <sys/stat.h>
 
 struct file {
-    unsigned flags;
+    /// the folder this file is contained in (`FOLDER_*`)
+    int folder;
+    /// flags of this file (`FLAG_*`)
+    int flags;
+    /// extension type of this file ('EXT_TYPE_*')
+    int type;
+    /// name of this file, this can contain slashes
     char *name;
+    /// full relative or absolute path of this file
     char *path;
+    /// stat information about this file
     struct stat st;
+    /// last time of input file (for test executables)
+    time_t last_input;
+    /// last time of data file (for test executables)
+    time_t last_data;
 };
 
 extern struct file_list {
+    /// base pointer to the file list
     struct file **ptr;
+    /// number of elements in the list
     size_t num;
 } Files;
 
-bool compile_files(void);
-bool link_binaries(void);
+/**
+ * @brief Find files in directories specified in the config.
+ *
+ * Collects all files it finds in either Config.sources or Config.tests
+ * and adds them to the file list. If a file already exists on the file list,
+ * then nothing happens.
+ *
+ * @return Whether all directories were accessible.
+ */
+bool collect_files(void);
+
+/**
+ * Build all files.
+ */
+bool build_objects(void);
+
+/**
+ * Link all executables.
+ */
+bool link_executables(void);
+
+/**
+ * Run all tests.
+ */
 bool run_tests(void);
 
 #endif
