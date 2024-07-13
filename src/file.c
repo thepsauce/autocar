@@ -239,7 +239,7 @@ static bool object_has_main(const char *o)
     }
 
     if (!bfd_check_format(b, bfd_object)) {
-        LOG("%s is not an object file\n", o);
+        LOG("'%s' is not an object file\n", o);
         return false;
     }
 
