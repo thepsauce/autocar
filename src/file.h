@@ -36,6 +36,11 @@ extern struct file_list {
 } Files;
 
 /**
+ *
+ */
+struct file *add_path(const char *path);
+
+/**
  * @brief Find files in directories specified in the config.
  *
  * Collects all files it finds in either Config.sources or Config.tests

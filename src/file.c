@@ -184,6 +184,46 @@ static struct file *add_file(int folder, const char *name, int type)
     return file;
 }
 
+struct file *add_path(const char *path)
+{
+    int folder;
+    char *folder_str;
+    struct stat st;
+    size_t n;
+    int type;
+    const char *ext;
+    char *name;
+    struct file *file;
+
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "'%s' is a directory (not allowed)\n", path);
+        return NULL;
+    }
+    for (folder = 0; folder < FOLDER_MAX; folder++) {
+        folder_str = Config.folders[folder];
+        n = strspn(folder_str, path);
+        if (path[n] == '/' || path[n] == '\0') {
+            break;
+        }
+    }
+    if (folder == FOLDER_MAX) {
+        folder = FOLDER_EXTERNAL;
+        n = 0;
+    }
+    ext = strrchr(path, '.');
+    if (ext == NULL) {
+        ext = path + strlen(path);
+    }
+    type = get_extension_type(ext);
+    n++;
+    name = smalloc(ext - path - n + 1);
+    memcpy(name, &path[n], ext - path - n);
+    name[ext - path - n] = '\0';
+    file = add_file(folder, name, type);
+    free(name);
+    return file;
+}
+
 bool collect_files(void)
 {
     char *folder;
@@ -262,7 +302,8 @@ static bool object_has_main(const char *o)
     return false;
 }
 
-static bool run_executable(char **args)
+static bool run_executable(char **args, const char *input_redirect,
+        const char *output_redirect)
 {
     int pid;
     int wstatus;
@@ -278,15 +319,29 @@ static bool run_executable(char **args)
         return false;
     }
     if (pid == 0) {
-        dup2(STDOUT_FILENO, STDERR_FILENO);
+        if (output_redirect != NULL) {
+            if (freopen(output_redirect, "wb", stdout) == NULL) {
+                LOG("freopen '%s' stdout: %s\n", output_redirect, strerror(errno));
+                return false;
+            }
+        } else {
+            dup2(STDOUT_FILENO, STDERR_FILENO);
+        }
+        if (input_redirect != NULL) {
+            printf("%s\n", input_redirect);
+            if (freopen(input_redirect, "rb", stdin) == NULL) {
+                LOG("freopen '%s' stdin: %s\n", input_redirect, strerror(errno));
+                return false;
+            }
+        }
         if (execvp(args[0], args) < 0) {
             LOG("execvp: %s\n", strerror(errno));
-            exit(1);
+            return false;
         }
     } else {
         waitpid(pid, &wstatus, 0);
         if (WEXITSTATUS(wstatus) != 0) {
-            LOG("%s returned: %d\n", args[0], wstatus);
+            LOG("`%s` returned: %d\n", args[0], wstatus);
             return false;
         }
     }
@@ -306,7 +361,7 @@ static bool rebuild_object(struct file *src, struct file *obj)
     args[Config.num_c_flags + 3] = (char*) "-o";
     args[Config.num_c_flags + 4] = obj->path;
     args[Config.num_c_flags + 5] = NULL;
-    if (!run_executable(args)) {
+    if (!run_executable(args, Config.err_file, NULL)) {
         return false;
     }
     if (object_has_main(obj->path)) {
@@ -328,7 +383,9 @@ bool build_objects(void)
                     file->name, EXT_TYPE_OBJECT);
             if (!(obj->flags & FLAG_EXISTS) ||
                     file->st.st_mtime > obj->st.st_mtime) {
-                rebuild_object(file, obj);
+                if (!rebuild_object(file, obj)) {
+                    return false;
+                }
             }
         }
     }
@@ -356,7 +413,7 @@ static bool relink_executable(struct file *exec,
         args[argi++] = Config.c_libs[i];
     }
     args[argi] = NULL;
-    if (!run_executable(args)) {
+    if (!run_executable(args, Config.err_file, NULL)) {
         return false;
     }
     return true;
@@ -385,7 +442,10 @@ bool link_executables(void)
             exec = add_file(file->folder, file->name, EXT_TYPE_EXECUTABLE);
             if (!(exec->flags & FLAG_EXISTS) ||
                     MAX(latest_time, file->st.st_mtime) > exec->st.st_mtime) {
-                relink_executable(exec, objects, num_objects, file);
+                if (!relink_executable(exec, objects, num_objects, file)) {
+                    free(objects);
+                    return false;
+                }
             }
         }
     }
@@ -402,8 +462,6 @@ bool run_tests(void)
     struct stat st;
     bool update;
     char *args[4];
-    int pid;
-    int wstatus;
     int c;
     FILE *fp;
 
@@ -454,36 +512,10 @@ bool run_tests(void)
                 s == -1;
         }
 
-        pid = fork();
-        if (pid == -1) {
-            LOG("fork: %s\n", strerror(errno));
+        args[0] = file->path;
+        args[1] = NULL;
+        if (!run_executable(args, output_path, input_path)) {
             goto err;
-        }
-        if (pid == 0) {
-            if (freopen(output_path, "wb", stdout) == NULL) {
-                LOG("freopen '%s' stdout: %s\n", output_path, strerror(errno));
-                exit(1);
-            }
-            if (input_path != NULL) {
-                printf("%s\n", input_path);
-                if (freopen(input_path, "rb", stdin) == NULL) {
-                    LOG("freopen '%s' stdin: %s\n", input_path, strerror(errno));
-                    exit(1);
-                }
-            }
-            args[0] = file->path;
-            args[1] = NULL;
-            LOG("run %s\n", file->path);
-            if (execv(file->path, args) == -1) {
-                LOG("execv: %s\n", strerror(errno));
-                exit(1);
-            }
-        } else {
-            waitpid(pid, &wstatus, 0);
-            if (WEXITSTATUS(wstatus) != 0) {
-                LOG("%s returned: %d\n", file->path, wstatus);
-                goto err;
-            }
         }
 
         fprintf(stderr, "| %s |\n", output_path);
@@ -492,7 +524,7 @@ bool run_tests(void)
             args[1] = data_path;
             args[2] = output_path;
             args[3] = NULL;
-            if (!run_executable(args)) {
+            if (!run_executable(args, NULL, NULL)) {
                 goto err;
             }
         } else {

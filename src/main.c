@@ -1,6 +1,7 @@
 #include "args.h"
 #include "conf.h"
 #include "file.h"
+#include "cli.h"
 
 #include <bfd.h>
 #include <unistd.h>
@@ -55,18 +56,24 @@ int main(int argc, char **argv)
 
     LOG("up and running\n");
 
-    while (1) {
-        if (!collect_files()) {
-            DLOG("0: did not reach the end\n");
-        } else if (!build_objects()) {
-            DLOG("1: did not reach the end\n");
-        } else if (!link_executables()) {
-            DLOG("2: did not reach the end\n");
-        } else if (!run_tests()) {
-            DLOG("3: did not reach the end\n");
+    run_cli();
+
+    while (CliRunning) {
+        if (!CliWantsPause) {
+            pthread_mutex_lock(&CliLock);
+            if (!collect_files()) {
+                DLOG("0: did not reach the end\n");
+            } else if (!build_objects()) {
+                DLOG("1: did not reach the end\n");
+            } else if (!link_executables()) {
+                DLOG("2: did not reach the end\n");
+            } else if (!run_tests()) {
+                DLOG("3: did not reach the end\n");
+            }
+            pthread_mutex_unlock(&CliLock);
+            fprintf(stderr, "==========================\n");
         }
         usleep(1000 * Config.interval);
-        DLOG("\n");
     }
 
     /* free resources */

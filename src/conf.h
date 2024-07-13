@@ -35,6 +35,8 @@ extern struct config {
     char *exts[EXT_TYPE_MAX];
     /// rebuild interval in milliseconds
     long interval;
+    /// output file of compiler errors
+    char *err_file;
 } Config;
 
 /**

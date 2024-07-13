@@ -2,4 +2,4 @@ __PROJECT_FILE=true
 project_name="build"
 project_source_dirs=( "src" )
 project_common_flags=( -g -fsanitize=address -std=gnu99 -D_GNU_SOURCE -Wall -pedantic-errors -Werror -Wextra -Wpedantic -Wunused-result )
-project_linker_libs=( -lbfd )
+project_linker_libs=( -lbfd -lreadline )
