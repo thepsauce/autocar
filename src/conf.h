@@ -3,12 +3,13 @@
 
 #include <stdbool.h>
 
-#define EXT_TYPE_SOURCE 0
-#define EXT_TYPE_HEADER 1
-#define EXT_TYPE_OBJECT 2
-#define EXT_TYPE_EXECUTABLE 3
-#define EXT_TYPE_FOLDER 4
-#define EXT_TYPE_OTHER 5
+#define EXT_TYPE_OTHER 0
+#define EXT_TYPE_SOURCE 1
+#define EXT_TYPE_HEADER 2
+#define EXT_TYPE_OBJECT 3
+#define EXT_TYPE_EXECUTABLE 4
+#define EXT_TYPE_FOLDER 5
+#define EXT_TYPE_MAX 6
 
 extern struct config {
     /// compiler
@@ -26,7 +27,7 @@ extern struct config {
     /// build folder
     char *build;
     /// file extensions of different file types
-    char *exts[EXT_TYPE_FOLDER];
+    char *exts[EXT_TYPE_MAX];
     /// rebuild interval in milliseconds
     long interval;
     /// output file for compiler errors

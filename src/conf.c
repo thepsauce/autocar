@@ -274,10 +274,12 @@ bool source_config(const char *conf)
 bool check_config(void)
 {
     static const char *default_extensions[] = {
+        [EXT_TYPE_OTHER] = "",
         [EXT_TYPE_SOURCE] = ".c",
         [EXT_TYPE_HEADER] = ".h",
         [EXT_TYPE_OBJECT] = ".o",
         [EXT_TYPE_EXECUTABLE] = "",
+        [EXT_TYPE_FOLDER] = "",
     };
     struct stat st;
 

@@ -9,6 +9,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <sys/wait.h>
+
 char *get_relative_path(const char *path)
 {
     const char *orig_path;

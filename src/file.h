@@ -9,6 +9,8 @@
 #define FLAG_IS_TEST 0x4
 /// if the file is in the build directory
 #define FLAG_IN_BUILD 0x8
+/// toggled after `add_file()`
+#define FLAG_IS_FRESH 0x10
 
 #include <stdbool.h>
 #include <sys/stat.h>
@@ -16,7 +18,7 @@
 struct file {
     /// full relative path of this file
     char *path;
-    /// points at the file extention in `path`
+    /// points at the file extension in `path`
     char *ext;
     /// extension type of this file ('EXT_TYPE_*')
     int type;
@@ -24,10 +26,12 @@ struct file {
     int flags;
     /// stat information about this file
     struct stat st;
-    /// last time of input file (for test executables)
-    time_t last_input;
-    /// last time of data file (for test executables)
-    time_t last_data;
+    /// input file (for test executables)
+    struct file *input;
+    /// data file (for test executables)
+    struct file *data;
+    /// output file (for test executables)
+    struct file *output;
 };
 
 extern struct file_list {

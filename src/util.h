@@ -40,50 +40,7 @@ void split_string_at_space(char *str, char ***psplit, size_t *pnum);
  * @return Whether running was successful.
  */
 bool run_executable(char **args, const char *output_redirect,
-        const char *input_redirect)
-{
-    int pid;
-    int wstatus;
-
-    for (char **a = args; a[0] != NULL; a++) {
-        LOG("%s ", a[0]);
-    }
-    LOG("\n");
-
-    pid = fork();
-    if (pid == -1) {
-        LOG("fork: %s\n", strerror(errno));
-        return false;
-    }
-    if (pid == 0) {
-        if (output_redirect != NULL) {
-            if (freopen(output_redirect, "wb", stdout) == NULL) {
-                LOG("freopen '%s' stdout: %s\n", output_redirect, strerror(errno));
-                return false;
-            }
-        } else {
-            dup2(STDOUT_FILENO, STDERR_FILENO);
-        }
-        if (input_redirect != NULL) {
-            printf("%s\n", input_redirect);
-            if (freopen(input_redirect, "rb", stdin) == NULL) {
-                LOG("freopen '%s' stdin: %s\n", input_redirect, strerror(errno));
-                return false;
-            }
-        }
-        if (execvp(args[0], args) < 0) {
-            LOG("execvp: %s\n", strerror(errno));
-            return false;
-        }
-    } else {
-        waitpid(pid, &wstatus, 0);
-        if (WEXITSTATUS(wstatus) != 0) {
-            LOG("`%s` returned: %d\n", args[0], wstatus);
-            return false;
-        }
-    }
-    return true;
-}
+        const char *input_redirect);
 
 #endif
 

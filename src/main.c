@@ -65,7 +65,6 @@ int main(int argc, char **argv)
                 DLOG("3: did not reach the end\n");
             }
             pthread_mutex_unlock(&CliLock);
-            fprintf(stderr, "==========================\n");
         }
         usleep(1000 * Config.interval);
     }

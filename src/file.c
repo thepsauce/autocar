@@ -170,7 +170,7 @@ struct file *add_file(char *path, int type, int flags)
     file = scalloc(1, sizeof(*file));
     file->path = path;
     file->type = type == -1 ? get_extension_type(path) : type;
-    file->flags = flags;
+    file->flags = flags | FLAG_IS_FRESH;
     file->ext = get_extension(path);
     Files.ptr = sreallocarray(Files.ptr, Files.num + 1, sizeof(*Files.ptr));
     memmove(&Files.ptr[index + 1], &Files.ptr[index],
@@ -206,7 +206,7 @@ bool collect_files(void)
                 continue;
             }
             path = sasprintf("%s/%s", file->path, ent->d_name);
-            add_file(path, -1, 0);
+            add_file(path, -1, file->flags & FLAG_IS_TEST);
             free(path);
         }
 
@@ -366,9 +366,17 @@ bool build_objects(void)
             if (!(obj->flags & FLAG_EXISTS) ||
                     file->st.st_mtime > obj->st.st_mtime) {
                 if (!rebuild_object(file, obj)) {
+                    obj->flags &= ~FLAG_EXISTS;
                     return false;
                 }
+            } else if (obj->flags & FLAG_IS_FRESH) {
+                if (object_has_main(obj->path)) {
+                    obj->flags |= FLAG_HAS_MAIN;
+                } else {
+                    obj->flags &= ~FLAG_HAS_MAIN;
+                }
             }
+            obj->flags &= ~FLAG_IS_FRESH;
         }
     }
     return true;
@@ -413,6 +421,7 @@ static bool relink_executable(struct file *exec,
     if (!run_executable(args, Config.err_file, NULL)) {
         return false;
     }
+    exec->flags |= FLAG_EXISTS;
     return true;
 }
 
@@ -461,8 +470,7 @@ bool link_executables(void)
         file = Files.ptr[i];
         if (file->flags & FLAG_HAS_MAIN) {
             e = get_exec_path(file->path, file->ext);
-            exec = add_file(e, EXT_TYPE_EXECUTABLE,
-                    file->flags & FLAG_IS_TEST);
+            exec = add_file(e, EXT_TYPE_EXECUTABLE, file->flags & FLAG_IS_TEST);
             free(e);
             stat_file(exec);
             if (!(exec->flags & FLAG_EXISTS) ||
@@ -481,20 +489,20 @@ bool link_executables(void)
 
 bool run_tests(void)
 {
-/*    struct file *file, *other;
-    char *input_path, *output_path, *data_path;
-    int s;
-    struct stat st;
+    struct file *file, *other;
     bool update;
     char *args[4];
     int c;
     FILE *fp;
-    char *name;
-    bool dot;
+    char *name, *n;
+    bool dot, d;
+    char *output_path;
 
     for (size_t i = 0; i < Files.num; i++) {
         file = Files.ptr[i];
-        if (file->type != EXT_TYPE_EXECUTABLE || !(file->flags & FLAG_IS_TEST)) {
+        if (file->type != EXT_TYPE_EXECUTABLE ||
+                (file->flags & (FLAG_IS_TEST | FLAG_EXISTS)) !=
+                (FLAG_IS_TEST | FLAG_EXISTS)) {
             continue;
         }
 
@@ -511,51 +519,88 @@ bool run_tests(void)
             dot = false;
         }
         for (size_t j = 0; j < Files.num; j++) {
-            char **p;
-            time_t *t;
-
             other = Files.ptr[j];
             if (i == j || other->type != EXT_TYPE_OTHER) {
                 continue;
             }
+            n = strrchr(other->path, '/');
+            if (n == NULL) {
+                n = other->path;
+            }
+            if (other->ext[0] == '.') {
+                d = true;
+                other->ext[0] = '\0';
+            } else {
+                d = false;
+            }
+            c = strcmp(name, n);
+            if (d) {
+                other->ext[0] = '.';
+            }
+            if (c != 0) {
+                continue;
+            }
             if (strcmp(other->ext, ".input") == 0) {
-                p = &input_path;
-                t = &file->last_input;
+                if (file->input != other) {
+                    file->input = other;
+                    update = true;
+                }
             } else if (strcmp(other->ext, ".data") == 0) {
-                p = &data_path;
-                t = &file->last_data;
+                if (file->data != other) {
+                    file->data = other;
+                    update = true;
+                }
             } else if (strcmp(other->ext, ".output") == 0) {
-                p = &output_path;
-                t = &file->last_output;
+                if (file->output != other) {
+                    file->output = other;
+                    update = true;
+                }
             }
-            *p = other->path;
-            if ((file->flags & FLAG_EXISTS) &&
-                    other->st.st_mtime > file->last_input) {
-                update = true;
-            } else if (!(file->flags & FLAG_EXISTS) &&
-                    file->last_input != 0) {
-                *p = NULL;
-                file->last_input = 0;
-            }
+        }
+
+        if (file->output == NULL) {
+            output_path = sasprintf("%s.output", file->path);
+            file->output = add_file(output_path, EXT_TYPE_OTHER, FLAG_IS_TEST);
+            free(output_path);
+            stat_file(file->output);
+            update = true;
+        }
+        if (dot) {
+            file->ext[0] = '.';
+        }
+
+        if (file->input != NULL &&
+                file->output->st.st_mtime < file->input->st.st_mtime) {
+            update = true;
+        }
+
+        if (file->data != NULL &&
+                file->output->st.st_mtime < file->data->st.st_mtime) {
+            update = true;
+        }
+
+        if (!update) {
+            continue;
         }
 
         args[0] = file->path;
         args[1] = NULL;
-        if (!run_executable(args, output_path, input_path)) {
-            goto err;
+        if (!run_executable(args, file->output->path,
+                    file->input == NULL ? "/dev/null" : file->input->path)) {
+            return false;
         }
 
-        fprintf(stderr, "| %s |\n", output_path);
-        if (data_path != NULL) {
+        fprintf(stderr, "| %s |\n", file->output->path);
+        if (file->data != NULL) {
             args[0] = Config.diff;
-            args[1] = data_path;
-            args[2] = output_path;
+            args[1] = file->data->path;
+            args[2] = file->output->path;
             args[3] = NULL;
             if (!run_executable(args, NULL, NULL)) {
-                goto err;
+                return false;
             }
         } else {
-            fp = fopen(output_path, "rb");
+            fp = fopen(file->output->path, "rb");
             if (fp != NULL) {
                 while (c = fgetc(fp), c != EOF) {
                     fputc(c, stderr);
@@ -566,15 +611,6 @@ bool run_tests(void)
                 }
             }
         }
-        free(input_path);
-        free(data_path);
-        free(output_path);
     }
     return true;
-
-err:
-    free(input_path);
-    free(data_path);
-    free(output_path);*/
-    return false;
 }
