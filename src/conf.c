@@ -104,7 +104,7 @@ static int set_conf(const char *name, char *value)
 
     case 's':
     case 'S':
-        if (strcasecmp(&name[1], "ources") != 0) {
+        if (strcasecmp(&name[1], "ource") != 0) {
             return 1;
         }
         add_file(value, EXT_TYPE_FOLDER, 0);
@@ -112,7 +112,7 @@ static int set_conf(const char *name, char *value)
 
     case 't':
     case 'T':
-        if (strcasecmp(&name[1], "ests") != 0) {
+        if (strcasecmp(&name[1], "est") != 0) {
             return 1;
         }
         add_file(value, EXT_TYPE_FOLDER, FLAG_IS_TEST);

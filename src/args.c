@@ -160,6 +160,12 @@ bool parse_args(int argc, char **argv)
 void usage(FILE *fp, const char *programName)
 {
     fprintf(fp, "C project builder:\n"
-            "%s [options]\n",
+            "%s [options]\n"
+            "options:\n"
+            "--help|-h show this help\n"
+            "--verbose|-v [arg] enable verbose output (-vdebug for maximum verbosity)\n"
+            "--config|-c <name> specify a config (default: autocar.conf)\n"
+            "--no-config start without any config; load default options\n"
+            "--allow-parent-paths allows paths to be in a parent directory\n" ,
             programName);
 }
