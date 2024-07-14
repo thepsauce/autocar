@@ -7,16 +7,8 @@
 #define EXT_TYPE_HEADER 1
 #define EXT_TYPE_OBJECT 2
 #define EXT_TYPE_EXECUTABLE 3
-#define EXT_TYPE_MAX 4
-
-#define FOLDER_SOURCE 0
-#define FOLDER_TEST 1
-#define FOLDER_EXTERNAL 2
-#define FOLDER_BUILD 3
-#define FOLDER_BUILD_SOURCE 4
-#define FOLDER_BUILD_TEST 5
-#define FOLDER_BUILD_EXTERNAL 6
-#define FOLDER_MAX 7
+#define EXT_TYPE_FOLDER 4
+#define EXT_TYPE_OTHER 5
 
 extern struct config {
     /// compiler
@@ -25,17 +17,19 @@ extern struct config {
     char *diff;
     /// compiler flags
     char **c_flags;
+    /// number of compiler flags
     size_t num_c_flags;
     /// linker libraries
     char **c_libs;
+    /// number of linker libraries
     size_t num_c_libs;
-    /// relevant folders
-    char *folders[FOLDER_MAX];
+    /// build folder
+    char *build;
     /// file extensions of different file types
-    char *exts[EXT_TYPE_MAX];
+    char *exts[EXT_TYPE_FOLDER];
     /// rebuild interval in milliseconds
     long interval;
-    /// output file of compiler errors
+    /// output file for compiler errors
     char *err_file;
 } Config;
 
@@ -45,6 +39,8 @@ extern struct config {
  * Checks for a config file with given path relative to the current directory or
  * by checking for a name in the current directory and all parent directories.
  * It remains in the directory it found the config file in.
+ *
+ * @param name_or_path Name or path if it contains slashes.
  *
  * @return Whether a config file was found.
  */
@@ -58,6 +54,8 @@ bool find_autocar_config(const char *name_or_path);
  * stored in `Config`.
  *
  * @see find_autocar_config()
+ *
+ * @param conf Path to the config file.
  *
  * @return Whether the config was in a valid format and the file was read
  * successfully.

@@ -5,21 +5,23 @@
 #define FLAG_EXISTS 0x1
 /// if the object has a function called `main()`
 #define FLAG_HAS_MAIN 0x2
+/// if the file is a test
+#define FLAG_IS_TEST 0x4
+/// if the file is in the build directory
+#define FLAG_IN_BUILD 0x8
 
 #include <stdbool.h>
 #include <sys/stat.h>
 
 struct file {
-    /// the folder this file is contained in (`FOLDER_*`)
-    int folder;
-    /// flags of this file (`FLAG_*`)
-    int flags;
+    /// full relative path of this file
+    char *path;
+    /// points at the file extention in `path`
+    char *ext;
     /// extension type of this file ('EXT_TYPE_*')
     int type;
-    /// name of this file, this can contain slashes
-    char *name;
-    /// full relative or absolute path of this file
-    char *path;
+    /// flags of this file (`FLAG_*`)
+    int flags;
     /// stat information about this file
     struct stat st;
     /// last time of input file (for test executables)
@@ -36,9 +38,20 @@ extern struct file_list {
 } Files;
 
 /**
+ * @brief Makes a file object and adds it to the file list.
  *
+ * Checks if a file with given parameters already exists and returns this file,
+ * it also uses `stat_file()` on it. If it does not exist, it makes a file using
+ * given `folder`, `name` and `type`, constructs the `path` and then adds this
+ * to the file list.
+ *
+ * @param path Path of the file.
+ * @param type Type of the file (`EXT_TYPE_*`).
+ * @param flags Flags of the file or'd together (`FLAG_*`).
+ *
+ * @return The allocated file.
  */
-struct file *add_path(const char *path);
+struct file *add_file(char *path, int type, int flags);
 
 /**
  * @brief Find files in directories specified in the config.
@@ -67,4 +80,3 @@ bool link_executables(void);
 bool run_tests(void);
 
 #endif
-

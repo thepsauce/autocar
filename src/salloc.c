@@ -59,3 +59,18 @@ void *sstrdup(const char *s)
     }
     return s_dup;
 }
+
+char *sasprintf(const char *fmt, ...)
+{
+    va_list l;
+    char *s;
+
+    va_start(l, fmt);
+    if (vasprintf(&s, fmt, l) == -1) {
+        fprintf(stderr, "vasprintf(%s): %s\n",
+                fmt, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    va_end(l);
+    return s;
+}

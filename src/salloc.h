@@ -28,5 +28,10 @@ void *sreallocarray(void *ptr, size_t nmemb, size_t size);
  */
 void *sstrdup(const char *s);
 
+/**
+ * @brief Like `asprintf()` but exit on failure.
+ */
+char *sasprintf(const char *fmt, ...);
+
 #endif
 

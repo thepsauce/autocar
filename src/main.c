@@ -9,6 +9,8 @@
 
 int main(int argc, char **argv)
 {
+    struct file *file;
+
     if (!parse_args(argc, argv)) {
         return 1;
     }
@@ -40,17 +42,9 @@ int main(int argc, char **argv)
             }
             DLOG("%s", Config.c_libs[i]);
         }
-        DLOG(")\nSOURCES = %s\n"
-                "TESTS = %s\n"
-                "BUILD = %s\n"
-                "BUILD_SOURCE = %s\n"
-                "BUILD_TEST = %s\n"
+        DLOG(")\nBUILD = %s\n"
                 "INTERVAL = %ld\n",
-                Config.folders[FOLDER_SOURCE],
-                Config.folders[FOLDER_TEST],
-                Config.folders[FOLDER_BUILD],
-                Config.folders[FOLDER_BUILD_SOURCE],
-                Config.folders[FOLDER_BUILD_TEST],
+                Config.build,
                 Config.interval);
     }
 
@@ -78,8 +72,7 @@ int main(int argc, char **argv)
 
     /* free resources */
     for (size_t i = 0; i < Files.num; i++) {
-        struct file *const file = Files.ptr[i];
-        free(file->name);
+        file = Files.ptr[i];
         free(file->path);
         free(file);
     }
@@ -97,10 +90,7 @@ int main(int argc, char **argv)
     }
     free(Config.c_libs);
 
-    for (int i = 0; i < FOLDER_MAX; i++) {
-        free(Config.folders[i]);
-    }
-    for (int i = 0; i < EXT_TYPE_MAX; i++) {
+    for (int i = 0; i < EXT_TYPE_FOLDER; i++) {
         free(Config.exts[i]);
     }
     return 0;

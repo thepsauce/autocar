@@ -1,6 +1,8 @@
 #include "args.h"
+#include "file.h"
 #include "conf.h"
 #include "salloc.h"
+#include "util.h"
 #include "macros.h"
 
 #include <ctype.h>
@@ -47,115 +49,8 @@ bool find_autocar_config(const char *name_or_path)
     return true;
 }
 
-static char *get_relative_path(const char *path)
+static int set_conf(const char *name, char *value)
 {
-    char *cwd;
-    size_t cwd_len;
-    char *s;
-    size_t index = 0;
-    size_t pref_cwd = 0, pref_path = 0;
-    size_t num_slashes = 0;
-
-    cwd = getcwd(NULL, 0);
-    if (cwd == NULL) {
-        fprintf(stderr, "getcwd: %s\n", strerror(errno));
-        exit(1);
-    }
-    cwd_len = strlen(cwd);
-
-    if (path[0] == '/') {
-        while (cwd[pref_cwd] == path[pref_path]) {
-            /* collapse multiple '/////' into a single one */
-            if (path[pref_path] == '/') {
-                do {
-                    pref_path++;
-                } while (path[pref_path] == '/');
-            } else {
-                pref_path++;
-            }
-            pref_cwd++;
-        }
-
-        if (cwd[pref_cwd] != '\0' ||
-                (path[pref_path] != '/' &&
-                 path[pref_path] != '\0')) {
-            /* position right at the previous slash */
-            while (pref_cwd > 0 && cwd[pref_cwd] != '/') {
-                pref_cwd--;
-                pref_path--;
-            }
-        }
-        pref_path++;
-
-        for (size_t i = pref_cwd; i < cwd_len; i++) {
-            if (cwd[i] == '/') {
-                if (!Args.allow_parent_paths) {
-                    fprintf(stderr, "'%s': path is not allowed to be"
-                            " in a parent directory\n", path);
-                    free(cwd);
-                    return NULL;
-                }
-                num_slashes++;
-            }
-        }
-    }
-    /* else the path is already relative to the current path */
-
-    s = smalloc(strlen(path) + 1);
-    for (path += pref_path;; path++) {
-        if (path[0] == '/') {
-            do {
-                path++;
-            } while (path[0] == '/');
-            if (path[0] == '\0') {
-                break;
-            }
-            s[index++] = '/';
-        }
-        if (path[0] == '\0') {
-            break;
-        }
-        s[index++] = path[0];
-    }
-    s[index] = '\0';
-    free(cwd);
-    return s;
-}
-
-static void split_flags(const char *flags, char ***psplit, size_t *pnum)
-{
-    const char *s, *e;
-    char **split = NULL;
-    size_t num = 0;
-
-    s = flags;
-    while (1) {
-        while (isspace(s[0])) {
-            s++;
-        }
-        e = s;
-        while (!isspace(e[0]) && e[0] != '\0') {
-            e++;
-        }
-
-        if (s == e) {
-            break;
-        }
-
-        split = sreallocarray(split, num + 1, sizeof(*split));
-        split[num++] = strndup(s, e - s);
-
-        s = e;
-    }
-
-    *psplit = split;
-    *pnum = num;
-}
-
-static int set_conf(const char *name, const char *value)
-{
-    char **rel = NULL;
-
     switch (name[0]) {
     case 'c':
     case 'C':
@@ -166,9 +61,17 @@ static int set_conf(const char *name, const char *value)
             Config.cc = sstrdup(value);
         } else if (name[1] == '_' || name[1] == ' ') {
             if (strcasecmp(&name[2], "flags") == 0) {
-                split_flags(value, &Config.c_flags, &Config.num_c_flags);
+                split_string_at_space(value,
+                        &Config.c_flags, &Config.num_c_flags);
+                for (size_t i = 0; i < Config.num_c_flags; i++) {
+                    Config.c_flags[i] = sstrdup(Config.c_flags[i]);
+                }
             } else if (strcasecmp(&name[2], "libs") == 0) {
-                split_flags(value, &Config.c_libs, &Config.num_c_libs);
+                split_string_at_space(value,
+                        &Config.c_libs, &Config.num_c_libs);
+                for (size_t i = 0; i < Config.num_c_libs; i++) {
+                    Config.c_libs[i] = sstrdup(Config.c_libs[i]);
+                }
             } else {
                 return 1;
             }
@@ -204,7 +107,7 @@ static int set_conf(const char *name, const char *value)
         if (strcasecmp(&name[1], "ources") != 0) {
             return 1;
         }
-        rel = &Config.folders[FOLDER_SOURCE];
+        add_file(value, EXT_TYPE_FOLDER, 0);
         break;
 
     case 't':
@@ -212,7 +115,7 @@ static int set_conf(const char *name, const char *value)
         if (strcasecmp(&name[1], "ests") != 0) {
             return 1;
         }
-        rel = &Config.folders[FOLDER_TEST];
+        add_file(value, EXT_TYPE_FOLDER, FLAG_IS_TEST);
         break;
 
     case 'b':
@@ -220,7 +123,10 @@ static int set_conf(const char *name, const char *value)
         if (strcasecmp(&name[1], "uild") != 0) {
             return 1;
         }
-        rel = &Config.folders[FOLDER_BUILD];
+        Config.build = get_relative_path(value);
+        if (Config.build == NULL) {
+            return -1;
+        }
         break;
 
     case 'i':
@@ -230,12 +136,6 @@ static int set_conf(const char *name, const char *value)
         }
         Config.interval = strtol(value, NULL, 0);
         break;
-    }
-    if (rel != NULL) {
-        *rel = get_relative_path(value);
-        if (*rel == NULL) {
-            return -1;
-        }
     }
     return 0;
 }
@@ -373,12 +273,6 @@ bool source_config(const char *conf)
 
 bool check_config(void)
 {
-    static const char *default_folders[] = {
-        [FOLDER_SOURCE] = "src",
-        [FOLDER_TEST] = "tests",
-        [FOLDER_EXTERNAL] = ".",
-        [FOLDER_BUILD] = "build",
-    };
     static const char *default_extensions[] = {
         [EXT_TYPE_SOURCE] = ".c",
         [EXT_TYPE_HEADER] = ".h",
@@ -397,22 +291,7 @@ bool check_config(void)
         Config.c_flags = sstrdup("-g -fsanitize=address -Wall -Wextra -Werror");
     }
 
-    for (int i = 0; i <= FOLDER_BUILD; i++) {
-        if (Config.folders[i] == NULL) {
-            Config.folders[i] = sstrdup(default_folders[i]);
-        }
-    }
-    for (int i = FOLDER_BUILD + 1; i < FOLDER_MAX; i++) {
-        char *f, *b, *s;
-
-        f = Config.folders[i - FOLDER_BUILD - 1];
-        b = Config.folders[FOLDER_BUILD];
-        s = smalloc(strlen(b) + 1 + strlen(f) + 1);
-        sprintf(s, "%s/%s", b, f);
-        Config.folders[i] = s;
-    }
-
-    for (int i = 0; i < EXT_TYPE_MAX; i++) {
+    for (int i = 0; i < EXT_TYPE_FOLDER; i++) {
         if (Config.exts[i] == NULL) {
             Config.exts[i] = sstrdup(default_extensions[i]);
         }
@@ -425,8 +304,9 @@ bool check_config(void)
         Config.interval = 100;
     }
 
-    for (int i = 0; i < FOLDER_MAX; i++) {
-        char *const folder = Config.folders[i];
+    for (size_t i = 0; i <= Files.num; i++) {
+        const char *const folder = i == Files.num ? Config.build :
+            Files.ptr[i]->path;
         if (stat(folder, &st) != 0) {
             if (errno == ENOENT) {
                 if (mkdir(folder, 0755) == -1) {
