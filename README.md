@@ -16,19 +16,19 @@ or .input file exists for them.
 
 # Config
 
-| Variable name | Purpose |
-| ------------- | ------- |
-| CC | The compiler to use |
-| DIFF | The diff program to use |
-| C\_FLAGS | flags to send the compiler |
-| C\_LIBS | flags to send the linker |
-| SOURCE | directory of source files |
-| TEST | directory of test files |
-| BUILD | output directory for all building |
-| EXT\_SOURCE | file extensions of source files, multiple can be specified separated by \| |
-| EXT\_HEADER | file extensions of header files |
-| EXT\_BUILD | file extensions of build files |
-| INTERVAL | re-check interval in milliseconds |
+| Variable name | Purpose | Default |
+| ------------- | ------- | ------- |
+| CC | The compiler to use | gcc |
+| DIFF | The diff program to use | diff |
+| C\_FLAGS | flags to send the compiler | -g -fsanitize=address -Wall -Wextra -Werror |
+| C\_LIBS | flags to send the linker | |
+| BUILD | output directory for all building | build |
+| EXT\_SOURCE | file extensions of source files, multiple can be specified separated by \| | .c |
+| EXT\_HEADER | file extensions of header files | .h |
+| EXT\_BUILD | file extensions of build files | .o |
+| INTERVAL | re-check interval in milliseconds | 100 |
+| INIT | run this at the start of the cli |  |
+| PROMPT | customize the prompt of the cli | >>>  |
 
 # Tests
 
@@ -44,11 +44,13 @@ test.
 The cli allows adding of (test) files/folders and running.
 
 1. `add <files>` adds given files to the file list
-2. `test <files>` adds given files to the file list as tests
-3. `list` list all files
-4. `run <number>` run given index, use `run` without any arguments to list all
+2. `delete <files>` deletes given files to the file list as tests
+3. `help` show help
+4. `list` list all files
+5. `run <number>` run given index, use `run` without any arguments to list all
    main programs
-4. `quit` quit all
+6. `pause` un-/pause the builder
+7. `quit` quit all
 
 # Todo
 
