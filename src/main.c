@@ -92,5 +92,12 @@ int main(int argc, char **argv)
     for (int i = 0; i < EXT_TYPE_FOLDER; i++) {
         free(Config.exts[i]);
     }
+
+    free(Config.build);
+
+    free(Config.err_file);
+
+    free(Config.init);
+    free(Config.prompt);
     return 0;
 }

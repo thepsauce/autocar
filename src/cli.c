@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include <glob.h>
+#include <fnmatch.h>
 
 #include <signal.h>
 
@@ -19,18 +20,22 @@ volatile bool CliWantsPause;
 pthread_mutex_t CliLock;
 
 #define CMD_ADD     0
-#define CMD_LIST    1
-#define CMD_PAUSE   2
-#define CMD_RUN     3
-#define CMD_TEST    4
-#define CMD_QUIT    5
+#define CMD_BUILD   1
+#define CMD_DELETE  2
+#define CMD_HELP    3
+#define CMD_LIST    4
+#define CMD_PAUSE   5
+#define CMD_RUN     6
+#define CMD_QUIT    7
 
 static const char *Commands[] = {
     [CMD_ADD] = "add",
+    [CMD_BUILD] = "build",
+    [CMD_DELETE] = "delete",
+    [CMD_HELP] = "help",
     [CMD_LIST] = "list",
     [CMD_PAUSE] = "pause",
     [CMD_RUN] = "run",
-    [CMD_TEST] = "test",
     [CMD_QUIT] = "quit",
 };
 
@@ -40,7 +45,7 @@ static void signal_handler(int sig)
     fprintf(stderr, "received SIGINT\n");
 }
 
-static void run_command(int cmd, char **args, size_t num_args)
+static int run_command(int cmd, char **args, size_t num_args)
 {
     static const char *ext_strings[EXT_TYPE_MAX] = {
         [EXT_TYPE_SOURCE] = "source",
@@ -52,29 +57,90 @@ static void run_command(int cmd, char **args, size_t num_args)
     };
 
     glob_t g;
+    struct file *file;
+    int result = 0;
+    int flags = 0;
 
     switch (cmd) {
     case CMD_ADD:
         for (size_t i = 0; i < num_args; i++) {
-            switch (glob(args[i], 0, NULL, &g)) {
+            if (strcmp(args[i], "-t") == 0) {
+                flags |= FLAG_IS_TEST;
+                continue;
+            }
+            //else if (strcmp(args[i], "-r") == 0) {
+            /* TODO: recursion */
+            switch (glob(args[i], GLOB_TILDE | GLOB_BRACE, NULL, &g)) {
             case 0:
                 for (size_t p = 0; p < g.gl_pathc; p++) {
-                    add_file(g.gl_pathv[p], 0, 0);
+                    add_file(g.gl_pathv[p], -1, flags);
                 }
                 globfree(&g);
                 break;
             case GLOB_NOMATCH:
-                fprintf(stdout, "no matches found\n");
+                printf("no matches found for: %s\n", args[i]);
+                result = -1;
                 break;
             default:
-                fprintf(stdout, "glob() error\n");
+                printf("glob() error\n");
+                result = -1;
                 break;
             }
         }
         break;
+
+    case CMD_BUILD:
+        for (size_t i = 0; i < num_args; i++) {
+            for (size_t f = 0; f < Files.num; f++) {
+                file = Files.ptr[f];
+                if (fnmatch(args[i], file->path, 0) == 0) {
+                    if (file->type != EXT_TYPE_OBJECT) {
+                        result = -1;
+                        i = num_args - 1;
+                        printf("can only rebuild objects but '%s' is not\n",
+                                file->path);
+                        break;
+                    }
+                }
+            }
+        }
+        break;
+
+    case CMD_DELETE:
+        for (size_t i = 0; i < num_args; i++) {
+            for (size_t f = 0; f < Files.num; ) {
+                file = Files.ptr[f];
+                if (fnmatch(args[i], file->path, 0) == 0) {
+                    free(file->path);
+                    free(file);
+                    Files.num--;
+                    memmove(&Files.ptr[f], &Files.ptr[f + 1],
+                            sizeof(*Files.ptr) * (Files.num - f));
+                } else {
+                    f++;
+                }
+            }
+        }
+        break;
+
+    case CMD_HELP:
+        printf("available commands:\n"
+                "note: A file refers to a regular file or directory.\n"
+                "      <files> accepts glob patterns\n"
+                "  add [files] [-t files] - add files to the file list\n"
+                "  build <files> - manually rebuild given files\n"
+                "  delete <files> - delete files from the file list\n"
+                "  help - show this help\n"
+                "  list - list all files in the file list\n"
+                "  pause - un-/pause the builder\n"
+                "  run <index> - run\n"
+                "  quit - quit the program\n");
+        break;
+
     case CMD_PAUSE:
         CliWantsPause = !CliWantsPause;
         break;
+
     case CMD_RUN:
         if (num_args == 0) {
             fprintf(stdout, "choose an executable:\n");
@@ -100,7 +166,7 @@ static void run_command(int cmd, char **args, size_t num_args)
                 if (index == 0) {
                     exe_args[0] = file->path;
                     exe_args[1] = NULL;
-                    run_executable(exe_args, NULL, NULL);
+                    result = run_executable(exe_args, NULL, NULL);
                     break;
                 }
             }
@@ -109,24 +175,7 @@ static void run_command(int cmd, char **args, size_t num_args)
             }
         }
         break;
-    case CMD_TEST:
-        for (size_t i = 0; i < num_args; i++) {
-            switch (glob(args[i], 0, NULL, &g)) {
-            case 0:
-                for (size_t p = 0; p < g.gl_pathc; p++) {
-                    add_file(g.gl_pathv[p], 0, FLAG_IS_TEST);
-                }
-                globfree(&g);
-                break;
-            case GLOB_NOMATCH:
-                printf("no matches found\n");
-                break;
-            default:
-                printf("glob() error\n");
-                break;
-            }
-        }
-        break;
+
     case CMD_LIST:
         for (size_t i = 0; i < Files.num; i++) {
             struct file *const file = Files.ptr[i];
@@ -149,24 +198,21 @@ static void run_command(int cmd, char **args, size_t num_args)
                     file->path, ext_strings[file->type], flags);
         }
         break;
+
     case CMD_QUIT:
         CliRunning = false;
         break;
     }
+    return result;
 }
 
-static void read_line(void)
+static int run_command_line(char *line)
 {
+    int result = 0;
     char **args;
     size_t num_args;
-    char *line;
     int cmd;
     size_t pref;
-
-    line = readline("> ");
-    if (line == NULL) {
-        return;
-    }
 
     split_string_at_space(line, &args, &num_args);
 
@@ -183,14 +229,27 @@ static void read_line(void)
         }
         if (cmd == (int) ARRAY_SIZE(Commands)) {
             fprintf(stderr, "command '%s' not found\n", args[0]);
+            result = -1;
         } else {
             pthread_mutex_lock(&CliLock);
-            run_command(cmd, &args[1], num_args - 1);
+            result = run_command(cmd, &args[1], num_args - 1);
             pthread_mutex_unlock(&CliLock);
         }
     }
 
     free(args);
+    return result;
+}
+
+static void read_line(void)
+{
+    char *line;
+
+    line = readline(Config.prompt);
+    if (line == NULL) {
+        return;
+    }
+    run_command_line(line);
     free(line);
 }
 
@@ -207,6 +266,11 @@ bool run_cli(void)
     pthread_t thread_id;
 
     signal(SIGINT, signal_handler);
+
+    if (run_command_line(Config.init) == -1) {
+        fprintf(stderr, "failed running initializer command line\n");
+        return false;
+    }
 
     if (pthread_create(&thread_id, NULL, cli_thread, NULL) != 0) {
         return false;

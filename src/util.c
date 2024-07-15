@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 char *get_relative_path(const char *path)
@@ -108,6 +109,7 @@ char *get_relative_path(const char *path)
         fprintf(stderr, "'%s': path is not allowed to be"
                 " in a parent directory\n", orig_path);
         free(s);
+        free(cwd);
         return NULL;
     }
 
@@ -169,7 +171,7 @@ void split_string_at_space(char *str, char ***psplit, size_t *pnum)
     *pnum = num;
 }
 
-bool run_executable(char **args, const char *output_redirect,
+int run_executable(char **args, const char *output_redirect,
         const char *input_redirect)
 {
     int pid;
@@ -183,13 +185,13 @@ bool run_executable(char **args, const char *output_redirect,
     pid = fork();
     if (pid == -1) {
         LOG("fork: %s\n", strerror(errno));
-        return false;
+        return -1;
     }
     if (pid == 0) {
         if (output_redirect != NULL) {
             if (freopen(output_redirect, "wb", stdout) == NULL) {
                 LOG("freopen '%s' stdout: %s\n", output_redirect, strerror(errno));
-                return false;
+                return -1;
             }
         } else {
             dup2(STDOUT_FILENO, STDERR_FILENO);
@@ -198,19 +200,42 @@ bool run_executable(char **args, const char *output_redirect,
             printf("%s\n", input_redirect);
             if (freopen(input_redirect, "rb", stdin) == NULL) {
                 LOG("freopen '%s' stdin: %s\n", input_redirect, strerror(errno));
-                return false;
+                return -1;
             }
         }
         if (execvp(args[0], args) < 0) {
             LOG("execvp: %s\n", strerror(errno));
-            return false;
+            return -1;
         }
     } else {
         waitpid(pid, &wstatus, 0);
         if (WEXITSTATUS(wstatus) != 0) {
             LOG("`%s` returned: %d\n", args[0], wstatus);
-            return false;
+            return WEXITSTATUS(wstatus);
         }
     }
-    return true;
+    return 0;
 }
+
+int create_recursive_directory(/* const */ char *path)
+{
+    char *cur, *s;
+
+    cur = path;
+    while (s = strchr(cur, '/'), s != NULL) {
+        s[0] = '\0';
+        if (mkdir(path, 0755) == -1) {
+            if (errno != EEXIST) {
+                LOG("mkdir '%s': %s\n", path, strerror(errno));
+                return -1;
+            }
+            DLOG("mkdir '%s': exists\n", path);
+        } else {
+            DLOG("mkdir '%s'\n", path);
+        }
+        s[0] = '/';
+        cur = s + 1;
+    }
+    return 0;
+}
+

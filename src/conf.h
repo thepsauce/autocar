@@ -32,6 +32,10 @@ extern struct config {
     long interval;
     /// output file for compiler errors
     char *err_file;
+    /// initializer command line
+    char *init;
+    /// prompt for the command line
+    char *prompt;
 } Config;
 
 /**

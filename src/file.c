@@ -16,6 +16,15 @@
 
 struct file_list Files;
 
+/**
+ * @brief Gets the extension of given path.
+ *
+ * The extension is the '.<text>' at the end where <text> may be empty. If there
+ * is no '.' in the last entry of the path, then a pointer to the
+ * `NULL`-terminator is returned.
+ *
+ * @return Extension of the path.
+ */
 static char *get_extension(char *path)
 {
     char *end, *ext;
@@ -266,28 +275,6 @@ static bool object_has_main(const char *o)
     return false;
 }
 
-static int create_base_directory(/* const */ char *path)
-{
-    char *cur, *s;
-
-    cur = path;
-    while (s = strchr(cur, '/'), s != NULL) {
-        s[0] = '\0';
-        if (mkdir(path, 0755) == -1) {
-            if (errno != EEXIST) {
-                LOG("mkdir '%s': %s\n", path, strerror(errno));
-                return -1;
-            }
-            DLOG("mkdir '%s': exists\n", path);
-        } else {
-            DLOG("mkdir '%s'\n", path);
-        }
-        s[0] = '/';
-        cur = s + 1;
-    }
-    return 0;
-}
-
 /**
  * @brief Rebuilds a source file.
  *
@@ -313,10 +300,11 @@ static bool rebuild_object(struct file *src, struct file *obj)
     args[Config.num_c_flags + 3] = (char*) "-o";
     args[Config.num_c_flags + 4] = obj->path;
     args[Config.num_c_flags + 5] = NULL;
-    if (create_base_directory(obj->path) == -1) {
+    if (create_recursive_directory(obj->path) == -1) {
         return false;
     }
-    if (!run_executable(args, Config.err_file, NULL)) {
+    if (run_executable(args, Config.err_file, NULL) != 0) {
+        obj->flags &= ~FLAG_EXISTS;
         return false;
     }
     if (object_has_main(obj->path)) {
@@ -366,7 +354,6 @@ bool build_objects(void)
             if (!(obj->flags & FLAG_EXISTS) ||
                     file->st.st_mtime > obj->st.st_mtime) {
                 if (!rebuild_object(file, obj)) {
-                    obj->flags &= ~FLAG_EXISTS;
                     return false;
                 }
             } else if (obj->flags & FLAG_IS_FRESH) {
@@ -415,10 +402,10 @@ static bool relink_executable(struct file *exec,
         args[argi++] = Config.c_libs[i];
     }
     args[argi] = NULL;
-    if (create_base_directory(exec->path) == -1) {
+    if (create_recursive_directory(exec->path) == -1) {
         return false;
     }
-    if (!run_executable(args, Config.err_file, NULL)) {
+    if (run_executable(args, Config.err_file, NULL) != 0) {
         return false;
     }
     exec->flags |= FLAG_EXISTS;
@@ -489,7 +476,7 @@ bool link_executables(void)
 
 bool run_tests(void)
 {
-    struct file *file, *other;
+    struct file *file, *other, *input, *output, *data;
     bool update;
     char *args[4];
     int c;
@@ -511,6 +498,8 @@ bool run_tests(void)
         name = strrchr(file->path, '/');
         if (name == NULL) {
             name = file->path;
+        } else {
+            name++;
         }
         if (file->ext[0] == '.') {
             dot = true;
@@ -518,14 +507,19 @@ bool run_tests(void)
         } else {
             dot = false;
         }
+        input = NULL;
+        data = NULL;
+        output = NULL;
         for (size_t j = 0; j < Files.num; j++) {
             other = Files.ptr[j];
-            if (i == j || other->type != EXT_TYPE_OTHER) {
+            if (other->type != EXT_TYPE_OTHER) {
                 continue;
             }
             n = strrchr(other->path, '/');
             if (n == NULL) {
                 n = other->path;
+            } else {
+                n++;
             }
             if (other->ext[0] == '.') {
                 d = true;
@@ -541,41 +535,38 @@ bool run_tests(void)
                 continue;
             }
             if (strcmp(other->ext, ".input") == 0) {
-                if (file->input != other) {
-                    file->input = other;
-                    update = true;
-                }
+                input = other;
             } else if (strcmp(other->ext, ".data") == 0) {
-                if (file->data != other) {
-                    file->data = other;
-                    update = true;
-                }
+                data = other;
             } else if (strcmp(other->ext, ".output") == 0) {
-                if (file->output != other) {
-                    file->output = other;
-                    update = true;
-                }
+                output = other;
             }
         }
 
-        if (file->output == NULL) {
+        if (input == NULL && data == NULL) {
+            /* ignore this test */
+            continue;
+        }
+
+        if (output == NULL) {
             output_path = sasprintf("%s.output", file->path);
-            file->output = add_file(output_path, EXT_TYPE_OTHER, FLAG_IS_TEST);
+            output = add_file(output_path, EXT_TYPE_OTHER, FLAG_IS_TEST);
             free(output_path);
-            stat_file(file->output);
+            stat_file(output);
+            update = true;
+        }
+        if (output->st.st_mtime < file->st.st_mtime) {
             update = true;
         }
         if (dot) {
             file->ext[0] = '.';
         }
 
-        if (file->input != NULL &&
-                file->output->st.st_mtime < file->input->st.st_mtime) {
+        if (input != NULL && output->st.st_mtime < input->st.st_mtime) {
             update = true;
         }
 
-        if (file->data != NULL &&
-                file->output->st.st_mtime < file->data->st.st_mtime) {
+        if (data != NULL && output->st.st_mtime < data->st.st_mtime) {
             update = true;
         }
 
@@ -585,22 +576,22 @@ bool run_tests(void)
 
         args[0] = file->path;
         args[1] = NULL;
-        if (!run_executable(args, file->output->path,
-                    file->input == NULL ? "/dev/null" : file->input->path)) {
+        if (run_executable(args, output->path, input == NULL ?
+                    "/dev/null" : input->path) != 0) {
             return false;
         }
 
-        fprintf(stderr, "| %s |\n", file->output->path);
-        if (file->data != NULL) {
+        fprintf(stderr, "| %s |\n", output->path);
+        if (data != NULL) {
             args[0] = Config.diff;
-            args[1] = file->data->path;
-            args[2] = file->output->path;
+            args[1] = data->path;
+            args[2] = output->path;
             args[3] = NULL;
-            if (!run_executable(args, NULL, NULL)) {
+            if (run_executable(args, NULL, NULL) != 0) {
                 return false;
             }
         } else {
-            fp = fopen(file->output->path, "rb");
+            fp = fopen(output->path, "rb");
             if (fp != NULL) {
                 while (c = fgetc(fp), c != EOF) {
                     fputc(c, stderr);

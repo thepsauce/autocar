@@ -37,10 +37,21 @@ void split_string_at_space(char *str, char ***psplit, size_t *pnum);
  * @param output_redirect Replaces `stdout`, may be `NULL` to not replace.
  * @param input_redirect Replaces `stdin`, may be `NULL` to not replace.
  *
- * @return Whether running was successful.
+ * @return -1 or the exit code of the sub process.
  */
-bool run_executable(char **args, const char *output_redirect,
+int run_executable(char **args, const char *output_redirect,
         const char *input_redirect);
 
-#endif
+/**
+ * @brief Creates a directory by creating all parent directories.
+ *
+ * If the `path` is parent/folder/A then the directories 'parent',
+ * 'parent/folder' and 'parent/folder/A' are created in that order.
+ *
+ * @param path The directory to create.
+ *
+ * @return -1 if mkdir failed, 0 otherwise.
+ */
+int create_recursive_directory(/* const */ char *path);
 
+#endif

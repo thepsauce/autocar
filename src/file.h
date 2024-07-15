@@ -26,12 +26,6 @@ struct file {
     int flags;
     /// stat information about this file
     struct stat st;
-    /// input file (for test executables)
-    struct file *input;
-    /// data file (for test executables)
-    struct file *data;
-    /// output file (for test executables)
-    struct file *output;
 };
 
 extern struct file_list {

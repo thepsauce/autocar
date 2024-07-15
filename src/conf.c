@@ -52,9 +52,20 @@ bool find_autocar_config(const char *name_or_path)
 static int set_conf(const char *name, char *value)
 {
     switch (name[0]) {
+    case 'b':
+    case 'B':
+        if (strcasecmp(&name[1], "uild") != 0) {
+            return 1;
+        }
+        Config.build = get_relative_path(value);
+        if (Config.build == NULL) {
+            return -1;
+        }
+        break;
+
     case 'c':
     case 'C':
-        if (name[1] == 'c' || name[1] == 'C') {
+        if (tolower(name[1]) == 'c') {
             if (name[2] != '\0') {
                 return 1;
             }
@@ -88,7 +99,8 @@ static int set_conf(const char *name, char *value)
 
     case 'e':
     case 'E':
-        if (name[1] != 'x' || name[2] != 't' || name[3] != '_') {
+        if (tolower(name[1]) != 'x' ||
+                tolower(name[2]) != 't' || name[3] != '_') {
             return 1;
         }
         if (strcasecmp(&name[4], "source") == 0) {
@@ -102,39 +114,24 @@ static int set_conf(const char *name, char *value)
         }
         break;
 
-    case 's':
-    case 'S':
-        if (strcasecmp(&name[1], "ource") != 0) {
-            return 1;
-        }
-        add_file(value, EXT_TYPE_FOLDER, 0);
-        break;
-
-    case 't':
-    case 'T':
-        if (strcasecmp(&name[1], "est") != 0) {
-            return 1;
-        }
-        add_file(value, EXT_TYPE_FOLDER, FLAG_IS_TEST);
-        break;
-
-    case 'b':
-    case 'B':
-        if (strcasecmp(&name[1], "uild") != 0) {
-            return 1;
-        }
-        Config.build = get_relative_path(value);
-        if (Config.build == NULL) {
-            return -1;
-        }
-        break;
-
     case 'i':
     case 'I':
-        if (strcasecmp(&name[1], "nterval") != 0) {
+        if (tolower(name[1]) != 'n') {
             return 1;
         }
-        Config.interval = strtol(value, NULL, 0);
+        if (strcasecmp(&name[2], "it") == 0) {
+            Config.init = sstrdup(value);
+        } else if (strcasecmp(&name[2], "terval") == 0) {
+            Config.interval = strtol(value, NULL, 0);
+        }
+        break;
+
+    case 'p':
+    case 'P':
+        if (strcasecmp(&name[1], "rompt") != 0) {
+            return 1;
+        }
+        Config.prompt = sstrdup(value);
         break;
     }
     return 0;
@@ -161,10 +158,10 @@ static bool parse_config(FILE *fp)
         while (isspace(s[0])) {
             s++;
         }
-        while (l > 0 && isspace(line[l - 1])) {
+        if (line[l - 1] == '\n') {
             l--;
+            line[l] = '\0';
         }
-        line[l] = '\0';
         if (s[0] == '\0') {
             continue;
         }
@@ -189,9 +186,6 @@ static bool parse_config(FILE *fp)
         e[1] = '\0';
 
         equ++;
-        while (isspace(equ[0])) {
-            equ++;
-        }
 
         if (set_conf(s, equ) == -1) {
             free(line);
@@ -281,7 +275,8 @@ bool check_config(void)
         [EXT_TYPE_EXECUTABLE] = "",
         [EXT_TYPE_FOLDER] = "",
     };
-    struct stat st;
+    static const char *default_prompt = ">>> ";
+    static const char *default_build = "build";
 
     if (Config.cc == NULL) {
         Config.cc = sstrdup("gcc");
@@ -293,7 +288,7 @@ bool check_config(void)
         Config.c_flags = sstrdup("-g -fsanitize=address -Wall -Wextra -Werror");
     }
 
-    for (int i = 0; i < EXT_TYPE_FOLDER; i++) {
+    for (int i = 0; i < EXT_TYPE_MAX; i++) {
         if (Config.exts[i] == NULL) {
             Config.exts[i] = sstrdup(default_extensions[i]);
         }
@@ -306,25 +301,16 @@ bool check_config(void)
         Config.interval = 100;
     }
 
-    for (size_t i = 0; i <= Files.num; i++) {
-        const char *const folder = i == Files.num ? Config.build :
-            Files.ptr[i]->path;
-        if (stat(folder, &st) != 0) {
-            if (errno == ENOENT) {
-                if (mkdir(folder, 0755) == -1) {
-                    fprintf(stderr, "mkdir '%s': %s\n",
-                            folder, strerror(errno));
-                    return false;
-                }
-                continue;
-            }
-            fprintf(stderr, "stat '%s': %s\n", folder, strerror(errno));
-            return false;
-        }
-        if (!S_ISDIR(st.st_mode)) {
-            fprintf(stderr, "'%s' must be a directory\n", folder);
-            return false;
-        }
+    if (Config.prompt == NULL) {
+        Config.prompt = sstrdup(default_prompt);
+    }
+
+    if (Config.build == NULL) {
+        Config.build = sstrdup(default_build);
+    }
+
+    if (create_recursive_directory(Config.build) == -1) {
+        return false;
     }
     return true;
 }
