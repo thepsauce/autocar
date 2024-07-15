@@ -3,7 +3,7 @@
 **auto**mated<br>
 **c**ompiling<br>
 **a**nd<br>
-**r**nning<br>
+**r**unning<br>
 
 (Also a pun because Auto is German for car.)
 
@@ -43,11 +43,11 @@ test.
 
 The cli allows adding of (test) files/folders and running.
 
-1. `add <files>` adds given files to the file list
-2. `delete <files>` deletes given files to the file list as tests
+1. `add [files] -t [files]` adds given files to the file list, (`-t` for tests)
+2. `delete [files]` deletes given files from the file list
 3. `help` show help
 4. `list` list all files
-5. `run <number>` run given index, use `run` without any arguments to list all
+5. `run [number]` run given index, use `run` without any arguments to list all
    main programs
 6. `pause` un-/pause the builder
 7. `quit` quit all
