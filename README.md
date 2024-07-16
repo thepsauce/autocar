@@ -27,8 +27,18 @@ or .input file exists for them.
 | EXT\_HEADER | file extensions of header files | .h |
 | EXT\_BUILD | file extensions of build files | .o |
 | INTERVAL | re-check interval in milliseconds | 100 |
-| INIT | run this at the start of the cli |  |
+| ERR\_FILE | where errors of the compiler should go | stderr |
 | PROMPT | customize the prompt of the cli | >>>  |
+
+# Arguments
+
+| Flag | Purpose |
+| ---- | ------- |
+|--help\|-h | shows all arguments |
+|--verbose\|-v [arg] | enable verbose output (`-vdebug` for maximum verbosity) |
+|--config\|-c \<name\> | specify a config (default: `autocar.conf`) |
+|--no-config | start without any config; load default options |
+|--allow-parent-paths | allows paths to be in a parent directory |
 
 # Tests
 
@@ -37,20 +47,36 @@ file has a function called `main` and then declares that object as main object.
 All main objects result in an executable that is stored in build and has no file
 extension. If a .data file is present, this data is used to compare against the
 output of the test. If a .input file is present, it is sent as `stdin` into the
-test.
+test. If neither .input nor .data are present, the test is ignored.
 
 # CLI
 
 The cli allows adding of (test) files/folders and running.
 
-1. `add [files] -t [files]` adds given files to the file list, (`-t` for tests)
+1. `add [files] [-t files] [-r files]` adds given files to the file list, (`-t` for tests and `-r` for recursive directories)
 2. `delete [files]` deletes given files from the file list
-3. `help` show help
-4. `list` list all files
-5. `run [number]` run given index, use `run` without any arguments to list all
+3. `config` show all config options
+4. `help` show help
+5. `execute [files]` runs all given files as autocar config file
+6. `list` list all files
+7. `pause` un-/pause the builder
+8. `run [number]` run given index, use `run` without any arguments to list all
    main programs
-6. `pause` un-/pause the builder
-7. `quit` quit all
+9. `quit` quit all
+
+A command line may be of two forms:
+1. `<command> <args>`
+2. `<name> = <args>`
+
+Any argument, command or name can be quoted and quotation marks as well as
+spaces can be escaped. To write multiple commands on a single line, use ';', the
+semicolon can also be escaped.
+
+The first one executes the command with given arguments. The second one sets the
+config value called \<name\> to given arguments.
+
+If any file should be rebuild, the best way is to remove the object
+file/executable from the file system.
 
 # Todo
 
@@ -58,4 +84,3 @@ The cli allows adding of (test) files/folders and running.
 - more cli commands
 - cleanup
 - build script
-
