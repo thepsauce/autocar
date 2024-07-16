@@ -195,41 +195,85 @@ struct file *add_file(char *path, int type, int flags)
     return file;
 }
 
-bool collect_files(void)
+struct path {
+    char *s;
+    size_t a;
+    int f;
+};
+
+static int collect_from_directory(struct path *path, size_t len_path)
 {
-    struct file *file;
     DIR *dir;
     struct dirent *ent;
-    char *path;
+    size_t len_name;
 
+    DLOG("collect from directory: '%s'\n", path->s);
+
+    dir = opendir(path->s);
+    if (dir == NULL) {
+        LOG("opendir(%s): %s\n", path->s, strerror(errno));
+        return -1;
+    }
+    while (ent = readdir(dir), ent != NULL) {
+        len_name = strlen(ent->d_name);
+        if (len_path + len_name + 2 > path->a) {
+            path->a = len_path + len_name + 2;
+            path->s = srealloc(path->s, path->a);
+        }
+        path->s[len_path] = '/';
+        strcpy(&path->s[len_path + 1], ent->d_name);
+
+        if (ent->d_type == DT_DIR && (path->f & FLAG_IS_RECURSIVE)) {
+            if (ent->d_name[0] == '.') {
+                if (ent->d_name[1] == '\0') {
+                    continue;
+                }
+                if (ent->d_name[1] == '.' && ent->d_name[2] == '\0') {
+                    continue;
+                }
+            }
+            collect_from_directory(path, len_path + 1 + len_name);
+        } else if (ent->d_type == DT_REG) {
+            path->s[len_path + len_name + 1] = '\0';
+            add_file(path->s, -1, path->f & FLAG_IS_TEST);
+        }
+    }
+
+    closedir(dir);
+    return 0;
+}
+
+int collect_files(void)
+{
+    int result = 0;
+    struct file *file;
+    struct path path;
+    size_t len_path;
+
+    path.a = 128;
+    path.s = smalloc(path.a);
     for (size_t i = 0; i < Files.num; i++) {
         file = Files.ptr[i];
         if (file->type != EXT_TYPE_FOLDER || !(file->flags & FLAG_EXISTS)) {
             continue;
         }
-        DLOG("collect sources from: '%s'\n", file->path);
 
-        dir = opendir(file->path);
-        if (dir == NULL) {
-            LOG("opendir: %s\n", strerror(errno));
-            return false;
+        len_path = strlen(file->path);
+        if (len_path + 1 > path.a) {
+            path.a = len_path + 1;
+            path.s = srealloc(path.s, path.a);
         }
-        while (ent = readdir(dir), ent != NULL) {
-            if (ent->d_type != DT_REG) {
-                continue;
-            }
-            path = sasprintf("%s/%s", file->path, ent->d_name);
-            add_file(path, -1, file->flags & FLAG_IS_TEST);
-            free(path);
-        }
-
-        closedir(dir);
+        strcpy(path.s, file->path);
+        path.f = file->flags;
+        result += collect_from_directory(&path, len_path);
     }
+    free(path.s);
+
     for (size_t i = 0; i < Files.num; i++) {
         file = Files.ptr[i];
         stat_file(file);
     }
-    return true;
+    return result;
 }
 
 /**

@@ -7,8 +7,10 @@
 #define FLAG_HAS_MAIN 0x2
 /// if the file is a test
 #define FLAG_IS_TEST 0x4
-/// toggled after `add_file()`
+/// toggled after `add_file()`, this is mainly for object files
 #define FLAG_IS_FRESH 0x8
+/// toggled if a directory should be scanned recursively
+#define FLAG_IS_RECURSIVE 0x10
 
 #include <stdbool.h>
 
@@ -96,7 +98,7 @@ struct file *add_file(char *path, int type, int flags);
  *
  * @return Whether all directories were accessible.
  */
-bool collect_files(void);
+int collect_files(void);
 
 /**
  * Build all files.

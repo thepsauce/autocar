@@ -80,7 +80,5 @@ file/executable from the file system.
 
 # Todo
 
-- recursion
-- more cli commands
 - cleanup
 - build script

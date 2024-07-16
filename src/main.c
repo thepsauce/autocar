@@ -68,7 +68,7 @@ int main(int argc, char **argv)
     while (CliRunning) {
         if (!CliWantsPause) {
             pthread_mutex_lock(&Files.lock);
-            if (!collect_files()) {
+            if (collect_files() != 0) {
                 DLOG("0: did not reach the end\n");
             } else if (!build_objects()) {
                 DLOG("1: did not reach the end\n");

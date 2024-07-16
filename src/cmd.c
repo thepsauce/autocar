@@ -65,9 +65,10 @@ static int run_command(int cmd, char **args, size_t num_args)
             if (strcmp(args[i], "-t") == 0) {
                 flags |= FLAG_IS_TEST;
                 continue;
+            } else if (strcmp(args[i], "-r") == 0) {
+                flags |= FLAG_IS_RECURSIVE;
+                continue;
             }
-            //else if (strcmp(args[i], "-r") == 0) {
-            /* TODO: recursion */
             switch (glob(args[i], GLOB_TILDE | GLOB_BRACE, NULL, &g)) {
             case 0:
                 for (size_t p = 0; p < g.gl_pathc; p++) {
