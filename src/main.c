@@ -61,11 +61,13 @@ int main(int argc, char **argv)
 
     LOG("up and running\n");
 
+    pthread_mutex_init(&Files.lock, NULL);
+
     run_cli();
 
     while (CliRunning) {
         if (!CliWantsPause) {
-            pthread_mutex_lock(&CliLock);
+            pthread_mutex_lock(&Files.lock);
             if (!collect_files()) {
                 DLOG("0: did not reach the end\n");
             } else if (!build_objects()) {
@@ -75,7 +77,7 @@ int main(int argc, char **argv)
             } else if (!run_tests()) {
                 DLOG("3: did not reach the end\n");
             }
-            pthread_mutex_unlock(&CliLock);
+            pthread_mutex_unlock(&Files.lock);
         }
         usleep(1000 * Config.interval);
     }

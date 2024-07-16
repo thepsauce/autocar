@@ -60,6 +60,7 @@ static int run_command(int cmd, char **args, size_t num_args)
 
     switch (cmd) {
     case CMD_ADD:
+        pthread_mutex_lock(&Files.lock);
         for (size_t i = 0; i < num_args; i++) {
             if (strcmp(args[i], "-t") == 0) {
                 flags |= FLAG_IS_TEST;
@@ -84,9 +85,11 @@ static int run_command(int cmd, char **args, size_t num_args)
                 break;
             }
         }
+        pthread_mutex_unlock(&Files.lock);
         break;
 
     case CMD_BUILD:
+        pthread_mutex_lock(&Files.lock);
         for (size_t i = 0; i < num_args; i++) {
             for (size_t f = 0; f < Files.num; f++) {
                 file = Files.ptr[f];
@@ -101,6 +104,7 @@ static int run_command(int cmd, char **args, size_t num_args)
                 }
             }
         }
+        pthread_mutex_unlock(&Files.lock);
         break;
 
     case CMD_CONFIG:
@@ -136,6 +140,7 @@ static int run_command(int cmd, char **args, size_t num_args)
         break;
 
     case CMD_DELETE:
+        pthread_mutex_lock(&Files.lock);
         for (size_t i = 0; i < num_args; i++) {
             for (size_t f = 0; f < Files.num; ) {
                 file = Files.ptr[f];
@@ -150,6 +155,7 @@ static int run_command(int cmd, char **args, size_t num_args)
                 }
             }
         }
+        pthread_mutex_unlock(&Files.lock);
         break;
 
     case CMD_EXECUTE:
@@ -197,6 +203,7 @@ static int run_command(int cmd, char **args, size_t num_args)
     case CMD_RUN:
         if (num_args == 0) {
             printf("choose an executable:\n");
+            pthread_mutex_lock(&Files.lock);
             for (size_t i = 0, index = 1; i < Files.num; i++) {
                 struct file *const file = Files.ptr[i];
                 if (file->type != EXT_TYPE_EXECUTABLE) {
@@ -205,11 +212,13 @@ static int run_command(int cmd, char **args, size_t num_args)
                 printf("(%zu) %s\n", index, file->path);
                 index++;
             }
+            pthread_mutex_unlock(&Files.lock);
         } else {
             size_t index;
             char *exe_args[2];
 
             index = strtoull(args[0], NULL, 0);
+            pthread_mutex_lock(&Files.lock);
             for (size_t i = 0; i < Files.num; i++) {
                 struct file *const file = Files.ptr[i];
                 if (file->type != EXT_TYPE_EXECUTABLE) {
@@ -223,6 +232,7 @@ static int run_command(int cmd, char **args, size_t num_args)
                     break;
                 }
             }
+            pthread_mutex_unlock(&Files.lock);
             if (index != 0) {
                 printf("invalid index\n");
             }
@@ -230,6 +240,7 @@ static int run_command(int cmd, char **args, size_t num_args)
         break;
 
     case CMD_LIST:
+        pthread_mutex_lock(&Files.lock);
         for (size_t i = 0; i < Files.num; i++) {
             struct file *const file = Files.ptr[i];
             char flags[8];
@@ -247,6 +258,7 @@ static int run_command(int cmd, char **args, size_t num_args)
             printf("(%zu) %s [%s] %s\n", i + 1,
                     file->path, ext_strings[file->type], flags);
         }
+        pthread_mutex_unlock(&Files.lock);
         break;
 
     case CMD_QUIT:
@@ -403,9 +415,7 @@ next_segment:
             fprintf(stderr, "command '%s' not found\n", args[0]);
             result = -1;
         } else {
-            pthread_mutex_lock(&CliLock);
             result = run_command(cmd, &args[1], num_args - 1);
-            pthread_mutex_unlock(&CliLock);
         }
         break;
     case PARSE_STATE_EQUAL:

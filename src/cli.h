@@ -6,7 +6,6 @@
 
 extern volatile bool CliRunning;
 extern volatile bool CliWantsPause;
-extern pthread_mutex_t CliLock;
 
 bool run_cli(void);
 

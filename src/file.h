@@ -11,6 +11,9 @@
 #define FLAG_IS_FRESH 0x8
 
 #include <stdbool.h>
+
+#include <pthread.h>
+
 #include <sys/stat.h>
 
 /**
@@ -39,6 +42,8 @@ extern struct file_list {
     struct file **ptr;
     /// number of elements in the list
     size_t num;
+    /// locks the filer pointer
+    pthread_mutex_t lock;
 } Files;
 
 /**

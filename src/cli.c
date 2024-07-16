@@ -15,7 +15,6 @@
 
 volatile bool CliRunning;
 volatile bool CliWantsPause;
-pthread_mutex_t CliLock;
 
 static void signal_handler(int sig)
 {
@@ -52,7 +51,6 @@ bool run_cli(void)
     if (pthread_create(&thread_id, NULL, cli_thread, NULL) != 0) {
         return false;
     }
-    pthread_mutex_init(&CliLock, NULL);
     CliRunning = true;
     return true;
 }
