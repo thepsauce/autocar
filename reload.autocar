@@ -1,0 +1,4 @@
+del *
+add src
+add -t tests
+list
