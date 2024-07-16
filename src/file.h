@@ -7,14 +7,16 @@
 #define FLAG_HAS_MAIN 0x2
 /// if the file is a test
 #define FLAG_IS_TEST 0x4
-/// if the file is in the build directory
-#define FLAG_IN_BUILD 0x8
 /// toggled after `add_file()`
-#define FLAG_IS_FRESH 0x10
+#define FLAG_IS_FRESH 0x8
 
 #include <stdbool.h>
 #include <sys/stat.h>
 
+/**
+ * A file is a reference to a path, its main purpose is to cache data so it does
+ * not need to be recomputed every time.
+ */
 struct file {
     /// full relative path of this file
     char *path;
@@ -26,14 +28,43 @@ struct file {
     int flags;
     /// stat information about this file
     struct stat st;
+    struct file **related;
 };
 
+/**
+ * The file list has all files and is sorted by `path`.
+ */
 extern struct file_list {
     /// base pointer to the file list
     struct file **ptr;
     /// number of elements in the list
     size_t num;
 } Files;
+
+/**
+ * The arrow '->' means: "This influences that".
+ * .c -> .o
+ * .h -> .h
+ * .h -> .c
+ * .o -> exec
+ *
+ * If the left changes, the right should also change.
+ */
+struct pair {
+    struct file *left;
+    struct file *right;
+};
+
+/**
+ * Sorted by the pointer value of `left`.
+ */
+extern struct pair_list {
+    struct pair *ptr;
+    size_t num;
+} Relation;
+
+void add_pair(struct file *left, struct file *right);
+void get_pairs(struct file *file, struct pair **ppairs, size_t *pnum);
 
 /**
  * @brief Makes a file object and adds it to the file list.

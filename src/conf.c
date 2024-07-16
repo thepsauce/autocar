@@ -1,4 +1,5 @@
 #include "args.h"
+#include "cmd.h"
 #include "file.h"
 #include "conf.h"
 #include "salloc.h"
@@ -9,8 +10,9 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
+
+#include <sys/stat.h>
 
 struct config Config;
 
@@ -49,15 +51,27 @@ bool find_autocar_config(const char *name_or_path)
     return true;
 }
 
-static int set_conf(const char *name, char *value)
+int set_conf(const char *name, char **args, size_t num_args, bool append)
 {
+    size_t off;
+
+#define CHECK_SINGLE_APPEND() \
+    if (num_args != 1) { \
+        return SET_CONF_SINGLE; \
+    } \
+    if (append) { \
+        return SET_CONF_APPEND; \
+    }
+
     switch (name[0]) {
     case 'b':
     case 'B':
         if (strcasecmp(&name[1], "uild") != 0) {
-            return 1;
+            return SET_CONF_EXIST;
         }
-        Config.build = get_relative_path(value);
+        CHECK_SINGLE_APPEND();
+        free(Config.build);
+        Config.build = get_relative_path(args[0]);
         if (Config.build == NULL) {
             return -1;
         }
@@ -67,202 +81,108 @@ static int set_conf(const char *name, char *value)
     case 'C':
         if (tolower(name[1]) == 'c') {
             if (name[2] != '\0') {
-                return 1;
+                return SET_CONF_EXIST;
             }
-            Config.cc = sstrdup(value);
+            CHECK_SINGLE_APPEND();
+            free(Config.cc);
+            Config.cc = sstrdup(args[0]);
         } else if (name[1] == '_' || name[1] == ' ') {
             if (strcasecmp(&name[2], "flags") == 0) {
-                split_string_at_space(value,
-                        &Config.c_flags, &Config.num_c_flags);
-                for (size_t i = 0; i < Config.num_c_flags; i++) {
-                    Config.c_flags[i] = sstrdup(Config.c_flags[i]);
+                off = append ? Config.num_c_flags : 0;
+                if (!append) {
+                    for (size_t i = 0; i < Config.num_c_flags; i++) {
+                        free(Config.c_flags[i]);
+                    }
                 }
+                Config.c_flags = sreallocarray(Config.c_flags,
+                        off + num_args, sizeof(*Config.c_flags));
+                for (size_t i = 0; i < num_args; i++) {
+                    Config.c_flags[off + i] = sstrdup(args[i]);
+                }
+                Config.num_c_flags = off + num_args;
             } else if (strcasecmp(&name[2], "libs") == 0) {
-                split_string_at_space(value,
-                        &Config.c_libs, &Config.num_c_libs);
-                for (size_t i = 0; i < Config.num_c_libs; i++) {
-                    Config.c_libs[i] = sstrdup(Config.c_libs[i]);
+                off = append ? Config.num_c_libs : 0;
+                if (!append) {
+                    for (size_t i = 0; i < Config.num_c_libs; i++) {
+                        free(Config.c_libs[i]);
+                    }
                 }
+                Config.c_libs = sreallocarray(Config.c_libs,
+                        off + num_args, sizeof(*Config.c_libs));
+                for (size_t i = 0; i < num_args; i++) {
+                    Config.c_libs[off + i] = sstrdup(args[i]);
+                }
+                Config.num_c_libs = off + num_args;
             } else {
-                return 1;
+                return SET_CONF_EXIST;
             }
+        } else {
+            return SET_CONF_EXIST;
         }
         break;
 
     case 'd':
     case 'D':
         if (strcasecmp(&name[1], "iff") != 0) {
-            return 1;
+            return SET_CONF_EXIST;
         }
-        Config.diff = sstrdup(value);
+        CHECK_SINGLE_APPEND();
+        free(Config.diff);
+        Config.diff = sstrdup(args[0]);
         break;
 
     case 'e':
     case 'E':
         if (tolower(name[1]) != 'x' ||
                 tolower(name[2]) != 't' || name[3] != '_') {
-            return 1;
+            return SET_CONF_EXIST;
         }
         if (strcasecmp(&name[4], "source") == 0) {
-            Config.exts[EXT_TYPE_SOURCE] = sstrdup(value);
+            CHECK_SINGLE_APPEND();
+            free(Config.exts[EXT_TYPE_SOURCE]);
+            Config.exts[EXT_TYPE_SOURCE] = sstrdup(args[0]);
         } else if (strcasecmp(&name[4], "header") == 0) {
-            Config.exts[EXT_TYPE_HEADER] = sstrdup(value);
+            CHECK_SINGLE_APPEND();
+            free(Config.exts[EXT_TYPE_OBJECT]);
+            Config.exts[EXT_TYPE_OBJECT] = sstrdup(args[0]);
         } else if (strcasecmp(&name[4], "build") == 0) {
-            Config.exts[EXT_TYPE_OBJECT] = sstrdup(value);
+            CHECK_SINGLE_APPEND();
+            free(Config.exts[EXT_TYPE_OBJECT]);
+            Config.exts[EXT_TYPE_OBJECT] = sstrdup(args[0]);
         } else {
-            return 1;
+            return SET_CONF_EXIST;
         }
         break;
 
     case 'i':
     case 'I':
-        if (tolower(name[1]) != 'n') {
-            return 1;
+        if (strcasecmp(&name[1], "nterval") != 0) {
+            return SET_CONF_EXIST;
         }
-        if (strcasecmp(&name[2], "it") == 0) {
-            Config.init = sstrdup(value);
-        } else if (strcasecmp(&name[2], "terval") == 0) {
-            Config.interval = strtol(value, NULL, 0);
-        }
+        CHECK_SINGLE_APPEND();
+        Config.interval = strtol(args[0], NULL, 0);
         break;
 
     case 'p':
     case 'P':
         if (strcasecmp(&name[1], "rompt") != 0) {
-            return 1;
+            return SET_CONF_EXIST;
         }
-        Config.prompt = sstrdup(value);
+        CHECK_SINGLE_APPEND();
+        free(Config.prompt);
+        Config.prompt = sstrdup(args[0]);
         break;
+    default:
+        return SET_CONF_EXIST;
     }
     return 0;
-}
-
-/**
- * Parses a config file in the format:
- * <Variable> = <Value>
- * .
- * .
- * .
- * It uses `set_conf()` to set valid variable names, invalid names that do not
- * exist in the config are ignored.
- */
-static bool parse_config(FILE *fp)
-{
-    char *line = NULL;
-    size_t n;
-    ssize_t l;
-    char *s, *e, *equ;
-
-    while ((l = getline(&line, &n, fp)) > 0) {
-        s = line;
-        while (isspace(s[0])) {
-            s++;
-        }
-        if (line[l - 1] == '\n') {
-            l--;
-            line[l] = '\0';
-        }
-        if (s[0] == '\0') {
-            continue;
-        }
-
-        equ = strchr(s, '=');
-        if (equ == NULL) {
-            fprintf(stderr, "invalid line: %s\n", s);
-            free(line);
-            return false;
-        }
-
-        e = equ;
-        while (e != s) {
-            e--;
-            if (!isspace(e[0])) {
-                break;
-            }
-        }
-        if (e == s) {
-            continue;
-        }
-        e[1] = '\0';
-
-        equ++;
-
-        if (set_conf(s, equ) == -1) {
-            free(line);
-            return false;
-        }
-    }
-    free(line);
-    if (errno != 0) {
-        fprintf(stderr, "getline: %s\n", strerror(errno));
-        return false;
-    }
-    return true;
-}
-
-static char *get_shebang_cmd(FILE *fp, const char *cat)
-{
-    char *cmd = NULL;
-    size_t n = 0;
-    ssize_t l;
-
-    l = getline(&cmd, &n, fp);
-    if (l < 0) {
-        if (errno == 0) {
-            fprintf(stderr, "invalid shebang\n");
-        } else {
-            fprintf(stderr, "getline: %s\n", strerror(errno));
-        }
-        fclose(fp);
-        return false;
-    }
-    if (cmd[l - 1] == '\n') {
-        cmd[--l] = ' ';
-    } else {
-        cmd[l] = ' ';
-    }
-    fclose(fp);
-
-    cmd = srealloc(cmd, l + 1 + strlen(cat) + 1);
-    strcat(cmd, cat);
-    return cmd;
+#undef CHECK_SINGLE_APPEND
 }
 
 bool source_config(const char *conf)
 {
-    bool r;
-    FILE *fp, *pp;
-    char *cmd;
-
-    DLOG("source: %s\n", conf);
-
-    fp = fopen(conf, "r");
-    if (fp == NULL) {
-        fprintf(stderr, "fopen '%s': %s\n", conf, strerror(errno));
-        return false;
-    }
-
-    if (fgetc(fp) == '#' && fgetc(fp) == '!') {
-        cmd = get_shebang_cmd(fp, conf);
-        if (cmd == NULL) {
-            return false;
-        }
-        DLOG("has shebang: %s\n", cmd);
-        pp = popen(cmd, "r");
-        if (pp == NULL) {
-            fprintf(stderr, "popen '%s': %s\n", cmd, strerror(errno));
-            fclose(fp);
-            free(cmd);
-            return false;
-        }
-        free(cmd);
-        r = parse_config(pp);
-        pclose(pp);
-    } else {
-        r = parse_config(fp);
-        fclose(fp);
-    }
-    return r;
+    Config.path = sstrdup(conf);
+    return source_file(conf) == 0;
 }
 
 bool check_config(void)

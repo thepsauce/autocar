@@ -58,8 +58,11 @@ static int get_extension_type(/* const */ char *e)
     int cmp;
 
     e = get_extension(e);
-    for (int i = 0; i < EXT_TYPE_FOLDER; i++) {
+    for (int i = 0; i < EXT_TYPE_MAX; i++) {
         ext = Config.exts[i];
+        if (ext == NULL) {
+            continue;
+        }
         while (ext[0] != '\0') {
             end = ext;
             while (end[0] != '\0' && end[0] != '|') {
@@ -151,6 +154,7 @@ static void stat_file(struct file *file)
         file->st = st;
     } else {
         file->flags &= ~FLAG_EXISTS;
+        file->st.st_mtime = 0;
     }
     if (s == 0 && S_ISDIR(st.st_mode)) {
         file->type = EXT_TYPE_FOLDER;
@@ -316,27 +320,24 @@ static bool rebuild_object(struct file *src, struct file *obj)
     return true;
 }
 
-static inline char *get_object_path(char *path, char *ext)
+static inline char *get_object_path(const char *path, const char *ext)
 {
-    bool dot;
     char *e;
+    size_t l;
+    size_t lb;
+    char *s;
 
-    if (ext[0] == '.') {
-        dot = true;
-        ext[0] = '\0';
-    } else {
-        dot = false;
-    }
     e = Config.exts[EXT_TYPE_OBJECT];
-    if (e == NULL || e[0] == '\0') {
-        e = sasprintf("%s/%s", Config.build, path);
-    } else {
-        e = sasprintf("%s/%s%s", Config.build, path, e);
-    }
-    if (dot) {
-        ext[0] = '.';
-    }
-    return e;
+    l = e == NULL ? 0 : strlen(e);
+    lb = strlen(Config.build);
+
+    s = smalloc(lb + 1 + (ext - path) + l + 1);
+    memcpy(s, Config.build, lb);
+    s[lb] = '/';
+    memcpy(&s[lb + 1], path, ext - path);
+    memcpy(&s[lb + 1 + ext - path], e, l);
+    s[lb + 1 + ext - path + l] = '\0';
+    return s;
 }
 
 bool build_objects(void)
@@ -412,27 +413,22 @@ static bool relink_executable(struct file *exec,
     return true;
 }
 
-static char *get_exec_path(char *path, char *ext)
+static inline char *get_exec_path(const char *path, char *ext)
 {
-    bool dot;
     char *e;
+    size_t l;
+    char *s;
 
-    if (ext[0] == '.') {
-        dot = true;
-        ext[0] = '\0';
-    } else {
-        dot = false;
-    }
     e = Config.exts[EXT_TYPE_EXECUTABLE];
-    if (e == NULL || e[0] == '\0') {
-        e = sasprintf("%s", path);
-    } else {
-        e = sasprintf("%s.%s", path, e);
+    l = e == NULL ? 0 : strlen(e) + 1;
+    s = smalloc(ext - path + l + 1);
+    memcpy(s, path, ext - path);
+    if (l == 0) {
+        s[ext - path] = '\0';
+        return s;
     }
-    if (dot) {
-        ext[0] = '.';
-    }
-    return e;
+    strcpy(&s[ext - path], e);
+    return s;
 }
 
 bool link_executables(void)
@@ -482,7 +478,7 @@ bool run_tests(void)
     int c;
     FILE *fp;
     char *name, *n;
-    bool dot, d;
+    size_t len, l;
     char *output_path;
 
     for (size_t i = 0; i < Files.num; i++) {
@@ -495,18 +491,15 @@ bool run_tests(void)
 
         update = false;
 
-        name = strrchr(file->path, '/');
-        if (name == NULL) {
-            name = file->path;
-        } else {
-            name++;
+        name = file->ext;
+        while (name != file->path) {
+            if (name[0] == '/') {
+                name++;
+                break;
+            }
+            name--;
         }
-        if (file->ext[0] == '.') {
-            dot = true;
-            file->ext[0] = '\0';
-        } else {
-            dot = false;
-        }
+        len = file->ext - name;
         input = NULL;
         data = NULL;
         output = NULL;
@@ -515,23 +508,16 @@ bool run_tests(void)
             if (other->type != EXT_TYPE_OTHER) {
                 continue;
             }
-            n = strrchr(other->path, '/');
-            if (n == NULL) {
-                n = other->path;
-            } else {
-                n++;
+            n = other->ext;
+            while (n != other->path) {
+                if (n[0] == '/') {
+                    n++;
+                    break;
+                }
+                n--;
             }
-            if (other->ext[0] == '.') {
-                d = true;
-                other->ext[0] = '\0';
-            } else {
-                d = false;
-            }
-            c = strcmp(name, n);
-            if (d) {
-                other->ext[0] = '.';
-            }
-            if (c != 0) {
+            l = other->ext - n;
+            if (l != len || memcmp(name, n, l) != 0) {
                 continue;
             }
             if (strcmp(other->ext, ".input") == 0) {
@@ -544,12 +530,13 @@ bool run_tests(void)
         }
 
         if (input == NULL && data == NULL) {
-            /* ignore this test */
             continue;
         }
 
         if (output == NULL) {
-            output_path = sasprintf("%s.output", file->path);
+            output_path = smalloc(file->ext - file->path + sizeof(".output"));
+            memcpy(output->path, file->path, file->ext - file->path);
+            strcpy(&output->path[file->ext - file->path], ".output");
             output = add_file(output_path, EXT_TYPE_OTHER, FLAG_IS_TEST);
             free(output_path);
             stat_file(output);
@@ -558,14 +545,9 @@ bool run_tests(void)
         if (output->st.st_mtime < file->st.st_mtime) {
             update = true;
         }
-        if (dot) {
-            file->ext[0] = '.';
-        }
-
         if (input != NULL && output->st.st_mtime < input->st.st_mtime) {
             update = true;
         }
-
         if (data != NULL && output->st.st_mtime < data->st.st_mtime) {
             update = true;
         }

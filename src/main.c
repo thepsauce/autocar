@@ -9,6 +9,7 @@
 
 int main(int argc, char **argv)
 {
+    char *conf;
     struct file *file;
 
     if (!parse_args(argc, argv)) {
@@ -21,14 +22,13 @@ int main(int argc, char **argv)
     }
 
     if (!Args.no_config) {
-        const char *const conf = Args.config == NULL ? "autocar.conf" :
-            Args.config;
+        conf = Args.config == NULL ? "autocar.conf" : Args.config;
         if (!find_autocar_config(conf) ||
                 !source_config(conf) ||
                 !check_config()) {
             return 1;
         }
-        DLOG("CC = %s\nC_FLAGS = (", Config.cc);
+        DLOG("PATH=%s\nCC = %s\nC_FLAGS = (", Config.path, Config.cc);
         for (size_t i = 0; i < Config.num_c_flags; i++) {
             if (i > 0) {
                 DLOG(" ");
@@ -42,10 +42,21 @@ int main(int argc, char **argv)
             }
             DLOG("%s", Config.c_libs[i]);
         }
+        DLOG(")\nEXTS = (");
+        for (size_t i = 0; i < EXT_TYPE_MAX; i++) {
+            if (i > 0) {
+                DLOG(" ");
+            }
+            DLOG("%s", Config.exts[i]);
+        }
         DLOG(")\nBUILD = %s\n"
-                "INTERVAL = %ld\n",
+                "INTERVAL = %ld\n"
+                "ERR_FILE = %s\n"
+                "PROMPT = %s\n",
                 Config.build,
-                Config.interval);
+                Config.interval,
+                Config.err_file,
+                Config.prompt);
     }
 
     LOG("up and running\n");
@@ -97,7 +108,6 @@ int main(int argc, char **argv)
 
     free(Config.err_file);
 
-    free(Config.init);
     free(Config.prompt);
     return 0;
 }

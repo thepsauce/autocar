@@ -12,6 +12,8 @@
 #define EXT_TYPE_MAX 6
 
 extern struct config {
+    /// path of the config file
+    char *path;
     /// compiler
     char *cc;
     /// diff program
@@ -32,8 +34,6 @@ extern struct config {
     long interval;
     /// output file for compiler errors
     char *err_file;
-    /// initializer command line
-    char *init;
     /// prompt for the command line
     char *prompt;
 } Config;
@@ -51,6 +51,19 @@ extern struct config {
  */
 bool find_autocar_config(const char *name_or_path);
 
+/* additional error codes for `set_conf()` */
+
+#define SET_CONF_SINGLE 1
+#define SET_CONF_APPEND 2
+#define SET_CONF_EXIST 3
+
+/**
+ * @brief Sets a variable in the config.
+ *
+ * @return One of the above error codes or -1 on failure, 0 on success.
+ */
+int set_conf(const char *name, char **args, size_t num_args, bool append);
+
 /**
  * @brief Sources the found config file.
  *
@@ -59,6 +72,7 @@ bool find_autocar_config(const char *name_or_path);
  * stored in `Config`.
  *
  * @see find_autocar_config()
+ * @see source_file()
  *
  * @param conf Path to the config file.
  *

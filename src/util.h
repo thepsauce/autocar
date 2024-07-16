@@ -3,6 +3,23 @@
 
 #include <stdlib.h>
 
+struct rip {
+    char *s;
+    char c;
+};
+
+#define rip_char(r, s, c) do { \
+    struct rip *const _r = (r); \
+    _r->s = (s); \
+    _r->c = _r->s[0]; \
+    _r->[0] = '\0'; \
+} while (0)
+
+#define unrip(r) do { \
+    struct rip *const _r = (r); \
+    _r->s[0] = _r->c; \
+} while (0)
+
 /**
  * @brief Get the given path relative to the current directory (getcwd()).
  *
