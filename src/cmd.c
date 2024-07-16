@@ -548,7 +548,7 @@ int source_file(const char *path)
         result = parse_file(pp);
         pclose(pp);
     } else {
-        DLOG("source: %s\n", path);
+        rewind(fp);
         result = parse_file(fp);
         fclose(fp);
     }
