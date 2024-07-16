@@ -19,19 +19,17 @@
 #include <unistd.h>
 
 #define CMD_ADD     0
-#define CMD_BUILD   1
-#define CMD_CONFIG  2
-#define CMD_DELETE  3
-#define CMD_EXECUTE 4
-#define CMD_HELP    5
-#define CMD_LIST    6
-#define CMD_PAUSE   7
-#define CMD_RUN     8
-#define CMD_QUIT    9
+#define CMD_CONFIG  1
+#define CMD_DELETE  2
+#define CMD_EXECUTE 3
+#define CMD_HELP    4
+#define CMD_LIST    5
+#define CMD_PAUSE   6
+#define CMD_RUN     7
+#define CMD_QUIT    8
 
 static const char *Commands[] = {
     [CMD_ADD] = "add",
-    [CMD_BUILD] = "build",
     [CMD_CONFIG] = "config",
     [CMD_DELETE] = "delete",
     [CMD_EXECUTE] = "execute",
@@ -53,10 +51,14 @@ static int run_command(int cmd, char **args, size_t num_args)
         [EXT_TYPE_OTHER] = "other"
     };
 
+    int result = 0;
+
     glob_t g;
     struct file *file;
-    int result = 0;
     int flags = 0;
+
+    size_t index;
+    char *exe_args[2];
 
     switch (cmd) {
     case CMD_ADD:
@@ -84,25 +86,6 @@ static int run_command(int cmd, char **args, size_t num_args)
                 printf("glob() error\n");
                 result = -1;
                 break;
-            }
-        }
-        pthread_mutex_unlock(&Files.lock);
-        break;
-
-    case CMD_BUILD:
-        pthread_mutex_lock(&Files.lock);
-        for (size_t i = 0; i < num_args; i++) {
-            for (size_t f = 0; f < Files.num; f++) {
-                file = Files.ptr[f];
-                if (fnmatch(args[i], file->path, 0) == 0) {
-                    if (file->type != EXT_TYPE_OBJECT) {
-                        result = -1;
-                        i = num_args - 1;
-                        printf("can only rebuild objects but '%s' is not\n",
-                                file->path);
-                        break;
-                    }
-                }
             }
         }
         pthread_mutex_unlock(&Files.lock);
@@ -215,9 +198,6 @@ static int run_command(int cmd, char **args, size_t num_args)
             }
             pthread_mutex_unlock(&Files.lock);
         } else {
-            size_t index;
-            char *exe_args[2];
-
             index = strtoull(args[0], NULL, 0);
             pthread_mutex_lock(&Files.lock);
             for (size_t i = 0; i < Files.num; i++) {
@@ -254,6 +234,9 @@ static int run_command(int cmd, char **args, size_t num_args)
             }
             if (file->flags & FLAG_IS_TEST) {
                 flags[f++] = 't';
+            }
+            if (file->flags & FLAG_IS_RECURSIVE) {
+                flags[f++] = 'r';
             }
             flags[f] = '\0';
             printf("(%zu) %s [%s] %s\n", i + 1,
