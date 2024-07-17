@@ -7,28 +7,42 @@
 
 void *smalloc(size_t size)
 {
-    void *const p = malloc(size);
-    if (p == NULL) {
+    void *ptr;
+
+    if (size == 0) {
+        return NULL;
+    }
+    ptr = malloc(size);
+    if (ptr == NULL) {
         fprintf(stderr, "malloc(%zu): %s\n",
                 size, strerror(errno));
         exit(EXIT_FAILURE);
     }
-    return p;
+    return ptr;
 }
 
 void *scalloc(size_t nmemb, size_t size)
 {
-    void *const p = calloc(nmemb, size);
-    if (p == NULL) {
+    void *ptr;
+
+    if (nmemb == 0 || size == 0) {
+        return NULL;
+    }
+    ptr = calloc(nmemb, size);
+    if (ptr == NULL) {
         fprintf(stderr, "calloc(%zu, %zu): %s\n",
                 nmemb, size, strerror(errno));
         exit(EXIT_FAILURE);
     }
-    return p;
+    return ptr;
 }
 
 void *srealloc(void *ptr, size_t size)
 {
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
     ptr = realloc(ptr, size);
     if (ptr == NULL) {
         fprintf(stderr, "realloc(%p, %zu): %s\n",
@@ -40,6 +54,10 @@ void *srealloc(void *ptr, size_t size)
 
 void *sreallocarray(void *ptr, size_t nmemb, size_t size)
 {
+    if (nmemb == 0 || size == 0) {
+        free(ptr);
+        return NULL;
+    }
     ptr = reallocarray(ptr, nmemb, size);
     if (ptr == NULL) {
         fprintf(stderr, "reallocarray(%p, %zu, %zu): %s\n",
@@ -51,7 +69,9 @@ void *sreallocarray(void *ptr, size_t nmemb, size_t size)
 
 void *sstrdup(const char *s)
 {
-    char *const s_dup = strdup(s);
+    char *s_dup;
+
+    s_dup = strdup(s);
     if (s_dup == NULL) {
         fprintf(stderr, "strdup(%s): %s\n",
                 s, strerror(errno));
