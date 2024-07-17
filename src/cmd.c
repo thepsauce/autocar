@@ -122,15 +122,17 @@ int run_command(int cmd, char **args, size_t num_args, FILE *out)
                 "note: A file refers to a regular file or directory.\n"
                 "      <files> accepts glob patterns\n"
                 "  add [files] [-t files] - add files to the file list\n"
-                "  build <files> - manually rebuild given files\n"
-                "  delete <files> - delete files from the file list\n"
-                "  help - show this help\n"
-                "  list - list all files in the file list\n"
+                "  config - show all config options\n"
+                "  delete [files] - deletes given files from the file list\n"
+                "  echo [args] - prints the expanded arguments to stdout\n"
+                "  help - show help\n"
+                "  list - list all files\n"
                 "  pause - un-/pause the builder\n"
-                "  run <index> - run\n"
-                "  quit - quit the program\n");
+                "  run <name> <args> - run file with given name. Use `run` without any arguments\n"
+                "                      to list all main programs. Use `run $<index> <args>` for convenience\n"
+                "  source [files] - runs all given files as autocar script\n"
+                "  quit - quit all\n");
         break;
-
     case CMD_LIST:
         pthread_mutex_lock(&Files.lock);
         for (size_t i = 0, f; i < Files.num; i++) {

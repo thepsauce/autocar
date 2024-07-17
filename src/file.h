@@ -49,31 +49,6 @@ extern struct file_list {
 } Files;
 
 /**
- * The arrow '->' means: "This influences that".
- * .c -> .o
- * .h -> .h
- * .h -> .c
- * .o -> exec
- *
- * If the left changes, the right should also change.
- */
-struct pair {
-    struct file *left;
-    struct file *right;
-};
-
-/**
- * Sorted by the pointer value of `left`.
- */
-extern struct pair_list {
-    struct pair *ptr;
-    size_t num;
-} Relation;
-
-void add_pair(struct file *left, struct file *right);
-void get_pairs(struct file *file, struct pair **ppairs, size_t *pnum);
-
-/**
  * @brief Makes a file object and adds it to the file list.
  *
  * Checks if a file with given parameters already exists and returns this file,
