@@ -127,7 +127,7 @@ beg:
             break;
 
         case '>':
-            if (st->state != STATE_REGULAR || st->num_args > 1) {
+            if (st->state != STATE_REGULAR) {
                 break;
             }
             if (!esc && quot == '\0') {
@@ -384,7 +384,9 @@ next_segment:
             printf("need redirect output name after '>'\n");
             break;
         }
-        redir = fopen(state.args[state.num_args - 1], "w");
+        state.num_args--;
+        redir = fopen(state.args[state.num_args], "w");
+        free(state.args[state.num_args]);
         if (redir == NULL) {
             printf("fopen: %s\n", strerror(errno));
             result = -1;
