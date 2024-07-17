@@ -2,19 +2,31 @@ int cmd_run(char **args, size_t num_args, FILE *out)
 {
     int result = 0;
     struct file *file;
-    char **exe_args;
+    bool has_exec = false;
+    char **exec_args;
 
     (void) out;
 
     if (num_args == 0) {
-        printf("choose an executable:\n");
         pthread_mutex_lock(&Files.lock);
         for (size_t i = 0; i < Files.num; i++) {
             file = Files.ptr[i];
             if (file->type != EXT_TYPE_EXECUTABLE) {
                 continue;
             }
-            printf("(%zu) %s\n", i + 1, file->path);
+            has_exec = true;
+        }
+        if (has_exec) {
+            printf("choose an executable:\n");
+            for (size_t i = 0; i < Files.num; i++) {
+                file = Files.ptr[i];
+                if (file->type != EXT_TYPE_EXECUTABLE) {
+                    continue;
+                }
+                printf("(%zu) %s\n", i + 1, file->path);
+            }
+        } else {
+            printf("(no executables)\n");
         }
         pthread_mutex_unlock(&Files.lock);
     } else {
@@ -29,13 +41,13 @@ int cmd_run(char **args, size_t num_args, FILE *out)
             pthread_mutex_unlock(&Files.lock);
             result = -1;
         } else {
-            exe_args = sreallocarray(NULL, num_args + 1, sizeof(*exe_args));
+            exec_args = sreallocarray(NULL, num_args + 1, sizeof(*exec_args));
             for (size_t i = 0; i < num_args; i++) {
-                exe_args[i] = args[i];
+                exec_args[i] = args[i];
             }
-            exe_args[num_args] = NULL;
-            result = run_executable(exe_args, NULL, NULL);
-            free(exe_args);
+            exec_args[num_args] = NULL;
+            result = run_executable(exec_args, NULL, NULL);
+            free(exec_args);
             pthread_mutex_unlock(&Files.lock);
         }
     }

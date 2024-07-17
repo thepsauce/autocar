@@ -482,4 +482,3 @@ int eval_file(FILE *fp)
     }
     return 0;
 }
-

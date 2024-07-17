@@ -17,6 +17,9 @@ int cmd_list(char **args, size_t num_args, FILE *out)
     (void) out;
 
     pthread_mutex_lock(&Files.lock);
+    if (Files.num == 0) {
+        printf("(no files in the file list)\n");
+    }
     for (size_t i = 0, f; i < Files.num; i++) {
         file = Files.ptr[i];
         f = 0;
