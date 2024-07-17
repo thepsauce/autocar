@@ -60,7 +60,8 @@ beg:
     while (isblank(st->line[0])) {
         st->line++;
     }
-    if (st->line[0] == '\0' || ((c == ';' || c == '#') && !esc && quot == '\0')) {
+    c = st->line[0];
+    if (c == '\0' || c == ';' || c == '#') {
         free(arg);
         return;
     }
@@ -346,6 +347,10 @@ int run_command_line(char *s)
     state.line = s;
 
 next_segment:
+    while (isblank(state.line[0])) {
+        state.line++;
+    }
+    DLOG("next segment: %s\n", state.line);
     if (state.line[0] == ':') {
         state.state = STATE_EXEC_SYSTEM;
         state.line++;
@@ -361,7 +366,7 @@ next_segment:
         goto end;
     }
 
-    DLOG("got args in state %d:", state);
+    DLOG("got args in state %d:", state.state);
     for (size_t i = 0; i < state.num_args; i++) {
         DLOG(" %s", state.args[i]);
     }
