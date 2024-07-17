@@ -157,7 +157,7 @@ beg:
                 memcpy(&arg[arg_len], Files.ptr[index]->path, n);
                 arg_len += n;
                 st->line--;
-                break;
+                continue;
             } else if (st->state >= STATE_SYSTEM) {
                 break;
             }

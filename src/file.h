@@ -90,6 +90,20 @@ void get_pairs(struct file *file, struct pair **ppairs, size_t *pnum);
 struct file *add_file(char *path, int type, int flags);
 
 /**
+ * @brief Finds a file corresponding to given parameters.
+ *
+ * The `pindex` parameter can be used to insert the next element, the file list
+ * is sorted at all times and adding a new file not already contained at the
+ * index will keep it sorted.
+ *
+ * @param name Name to search for.
+ * @param pindex Pointer to store the index in, may be `NULL`.
+ *
+ * @return NULL if the file was not found, otherwise a pointer to the file.
+ */
+struct file *search_file(const char *path, size_t *pindex);
+
+/**
  * @brief Find files in directories specified in the config.
  *
  * Collects all files it finds in either Config.sources or Config.tests

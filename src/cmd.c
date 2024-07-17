@@ -49,7 +49,7 @@ int run_command(int cmd, char **args, size_t num_args, FILE *out)
     int flags = 0;
 
     size_t index;
-    char *exe_args[2];
+    char **exe_args;
 
     char str_flags[8];
 
@@ -167,35 +167,36 @@ int run_command(int cmd, char **args, size_t num_args, FILE *out)
         if (num_args == 0) {
             printf("choose an executable:\n");
             pthread_mutex_lock(&Files.lock);
-            for (size_t i = 0, index = 1; i < Files.num; i++) {
-                file = Files.ptr[i];
-                if (file->type != EXT_TYPE_EXECUTABLE) {
-                    continue;
-                }
-                printf("(%zu) %s\n", index, file->path);
-                index++;
-            }
-            pthread_mutex_unlock(&Files.lock);
-        } else {
-            index = strtoull(args[0], NULL, 0);
-            pthread_mutex_lock(&Files.lock);
             for (size_t i = 0; i < Files.num; i++) {
                 file = Files.ptr[i];
                 if (file->type != EXT_TYPE_EXECUTABLE) {
                     continue;
                 }
-                index--;
-                if (index == 0) {
-                    exe_args[0] = file->path;
-                    exe_args[1] = NULL;
-                    result = run_executable(exe_args, NULL, NULL);
-                    break;
-                }
+                printf("(%zu) %s\n", i + 1, file->path);
+                index++;
             }
             pthread_mutex_unlock(&Files.lock);
-            if (index != 0) {
-                printf("invalid index\n");
+        } else {
+            pthread_mutex_lock(&Files.lock);
+            file = search_file(args[0], NULL);
+            if (file == NULL) {
+                printf("'%s' does not exist\n", args[0]);
+                pthread_mutex_unlock(&Files.lock);
+                break;
             }
+            if (file->type != EXT_TYPE_EXECUTABLE) {
+                printf("'%s' is not an executable\n", file->path);
+                pthread_mutex_unlock(&Files.lock);
+                break;
+            }
+            exe_args = sreallocarray(NULL, num_args + 1, sizeof(*exe_args));
+            for (size_t i = 0; i < num_args; i++) {
+                exe_args[i] = args[i];
+            }
+            exe_args[num_args] = NULL;
+            result = run_executable(exe_args, NULL, NULL);
+            free(exe_args);
+            pthread_mutex_unlock(&Files.lock);
         }
         break;
 

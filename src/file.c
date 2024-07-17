@@ -93,19 +93,7 @@ static int get_extension_type(/* const */ char *e)
     return EXT_TYPE_OTHER;
 }
 
-/**
- * @brief Finds a file corresponding to given parameters.
- *
- * The `pindex` parameter can be used to insert the next element, the file list
- * is sorted at all times and adding a new file not already contained at the
- * index will keep it sorted.
- *
- * @param name Name to search for.
- * @param pindex Pointer to store the index in, may be `NULL`.
- *
- * @return NULL if the file was not found, otherwise a pointer to the file.
- */
-static struct file *search_file(const char *path, size_t *pindex)
+struct file *search_file(const char *path, size_t *pindex)
 {
     size_t l, m, r;
     int cmp;
