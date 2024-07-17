@@ -389,7 +389,7 @@ next_segment:
     case STATE_REGULAR:
         for (cmd = 0; cmd < (int) ARRAY_SIZE(Commands); cmd++) {
             for (pref = 0; state.args[0][pref] != '\0'; pref++) {
-                if (Commands[cmd][pref] != state.args[0][pref]) {
+                if (Commands[cmd].name[pref] != state.args[0][pref]) {
                     break;
                 }
             }

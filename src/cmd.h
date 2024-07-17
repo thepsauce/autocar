@@ -15,7 +15,11 @@
 #define CMD_SOURCE      9
 #define CMD_MAX        10
 
-extern const char *Commands[CMD_MAX];
+extern const struct command {
+    const char *name;
+    int (*cmd_proc)(char **args, size_t num_args, FILE *out);
+    const char *help;
+} Commands[CMD_MAX];
 
 /**
  * @brief Runs an internal command with given args.
