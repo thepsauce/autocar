@@ -18,29 +18,20 @@
 
 #include <unistd.h>
 
-#define CMD_ADD     0
-#define CMD_CONFIG  1
-#define CMD_DELETE  2
-#define CMD_EXECUTE 3
-#define CMD_HELP    4
-#define CMD_LIST    5
-#define CMD_PAUSE   6
-#define CMD_RUN     7
-#define CMD_QUIT    8
-
-static const char *Commands[] = {
+const char *Commands[] = {
     [CMD_ADD] = "add",
     [CMD_CONFIG] = "config",
     [CMD_DELETE] = "delete",
-    [CMD_EXECUTE] = "execute",
+    [CMD_ECHO] = "echo",
     [CMD_HELP] = "help",
     [CMD_LIST] = "list",
     [CMD_PAUSE] = "pause",
     [CMD_RUN] = "run",
+    [CMD_SOURCE] = "source",
     [CMD_QUIT] = "quit",
 };
 
-static int run_command(int cmd, char **args, size_t num_args)
+int run_command(int cmd, char **args, size_t num_args, FILE *out)
 {
     static const char *ext_strings[EXT_TYPE_MAX] = {
         [EXT_TYPE_SOURCE] = "source",
@@ -59,6 +50,8 @@ static int run_command(int cmd, char **args, size_t num_args)
 
     size_t index;
     char *exe_args[2];
+
+    char str_flags[8];
 
     switch (cmd) {
     case CMD_ADD:
@@ -92,35 +85,7 @@ static int run_command(int cmd, char **args, size_t num_args)
         break;
 
     case CMD_CONFIG:
-        printf("PATH=%s\nCC = %s\nC_FLAGS = (", Config.path, Config.cc);
-        for (size_t i = 0; i < Config.num_c_flags; i++) {
-            if (i > 0) {
-                printf(" ");
-            }
-            printf("%s", Config.c_flags[i]);
-        }
-        printf(")\nC_LIBS = (");
-        for (size_t i = 0; i < Config.num_c_libs; i++) {
-            if (i > 0) {
-                DLOG(" ");
-            }
-            printf("%s", Config.c_libs[i]);
-        }
-        printf(")\nEXTS = (");
-        for (size_t i = 0; i < EXT_TYPE_MAX; i++) {
-            if (i > 0) {
-                printf(" ");
-            }
-            printf("%s", Config.exts[i]);
-        }
-        printf(")\nBUILD = %s\n"
-                "INTERVAL = %ld\n"
-                "ERR_FILE = %s\n"
-                "PROMPT = %s\n",
-                Config.build,
-                Config.interval,
-                Config.err_file,
-                Config.prompt);
+        dump_conf(out);
         break;
 
     case CMD_DELETE:
@@ -142,28 +107,14 @@ static int run_command(int cmd, char **args, size_t num_args)
         pthread_mutex_unlock(&Files.lock);
         break;
 
-    case CMD_EXECUTE:
+    case CMD_ECHO:
         for (size_t i = 0; i < num_args; i++) {
-            switch (glob(args[i], GLOB_TILDE | GLOB_BRACE, NULL, &g)) {
-            case 0:
-                for (size_t p = 0; p < g.gl_pathc; p++) {
-                    if (source_file(g.gl_pathv[p]) != 0) {
-                        printf("failed sourcing: '%s'\n", g.gl_pathv[p]);
-                        break;
-                    }
-                }
-                globfree(&g);
-                break;
-            case GLOB_NOMATCH:
-                printf("no matches found for: '%s'\n", args[i]);
-                result = -1;
-                break;
-            default:
-                printf("glob() error\n");
-                result = -1;
-                break;
+            if (i > 0) {
+                putchar(' ');
             }
+            printf("%s", args[i]);
         }
+        printf("\n");
         break;
 
     case CMD_HELP:
@@ -180,8 +131,36 @@ static int run_command(int cmd, char **args, size_t num_args)
                 "  quit - quit the program\n");
         break;
 
+    case CMD_LIST:
+        pthread_mutex_lock(&Files.lock);
+        for (size_t i = 0, f; i < Files.num; i++) {
+            file = Files.ptr[i];
+            f = 0;
+            if (file->flags & FLAG_EXISTS) {
+                str_flags[f++] = 'e';
+            }
+            if (file->flags & FLAG_HAS_MAIN) {
+                str_flags[f++] = 'm';
+            }
+            if (file->flags & FLAG_IS_TEST) {
+                str_flags[f++] = 't';
+            }
+            if (file->flags & FLAG_IS_RECURSIVE) {
+                str_flags[f++] = 'r';
+            }
+            str_flags[f] = '\0';
+            printf("(%zu) %s [%s] %s\n", i + 1,
+                    file->path, ext_strings[file->type], str_flags);
+        }
+        pthread_mutex_unlock(&Files.lock);
+        break;
+
     case CMD_PAUSE:
         CliWantsPause = !CliWantsPause;
+        break;
+
+    case CMD_QUIT:
+        CliRunning = false;
         break;
 
     case CMD_RUN:
@@ -189,7 +168,7 @@ static int run_command(int cmd, char **args, size_t num_args)
             printf("choose an executable:\n");
             pthread_mutex_lock(&Files.lock);
             for (size_t i = 0, index = 1; i < Files.num; i++) {
-                struct file *const file = Files.ptr[i];
+                file = Files.ptr[i];
                 if (file->type != EXT_TYPE_EXECUTABLE) {
                     continue;
                 }
@@ -201,7 +180,7 @@ static int run_command(int cmd, char **args, size_t num_args)
             index = strtoull(args[0], NULL, 0);
             pthread_mutex_lock(&Files.lock);
             for (size_t i = 0; i < Files.num; i++) {
-                struct file *const file = Files.ptr[i];
+                file = Files.ptr[i];
                 if (file->type != EXT_TYPE_EXECUTABLE) {
                     continue;
                 }
@@ -220,257 +199,31 @@ static int run_command(int cmd, char **args, size_t num_args)
         }
         break;
 
-    case CMD_LIST:
-        pthread_mutex_lock(&Files.lock);
-        for (size_t i = 0; i < Files.num; i++) {
-            struct file *const file = Files.ptr[i];
-            char flags[8];
-            int f = 0;
-            if (file->flags & FLAG_EXISTS) {
-                flags[f++] = 'e';
+    case CMD_SOURCE:
+        for (size_t i = 0; i < num_args; i++) {
+            switch (glob(args[i], GLOB_TILDE | GLOB_BRACE, NULL, &g)) {
+            case 0:
+                for (size_t p = 0; p < g.gl_pathc; p++) {
+                    if (source_path(g.gl_pathv[p]) != 0) {
+                        printf("failed sourcing: '%s'\n", g.gl_pathv[p]);
+                        break;
+                    }
+                }
+                globfree(&g);
+                break;
+            case GLOB_NOMATCH:
+                printf("no matches found for: '%s'\n", args[i]);
+                result = -1;
+                break;
+            default:
+                printf("glob() error\n");
+                result = -1;
+                break;
             }
-            if (file->flags & FLAG_HAS_MAIN) {
-                flags[f++] = 'm';
-            }
-            if (file->flags & FLAG_IS_TEST) {
-                flags[f++] = 't';
-            }
-            if (file->flags & FLAG_IS_RECURSIVE) {
-                flags[f++] = 'r';
-            }
-            flags[f] = '\0';
-            printf("(%zu) %s [%s] %s\n", i + 1,
-                    file->path, ext_strings[file->type], flags);
         }
-        pthread_mutex_unlock(&Files.lock);
-        break;
-
-    case CMD_QUIT:
-        CliRunning = false;
         break;
     }
     return result;
-}
-
-#define PARSE_STATE_REGULAR 0
-#define PARSE_STATE_APPEND 1
-#define PARSE_STATE_EQUAL 2
-
-char *read_arg(const char **ps, int *pstate)
-{
-    const char *s;
-
-    size_t a_arg = 10;
-    char *arg;
-    size_t len_arg = 0;
-
-    bool esc = false;
-    char quot = '\0';
-
-    arg = smalloc(a_arg);
-
-    s = *ps;
-    while (isblank(s[0])) {
-        s++;
-    }
-    for (; s[0] != '\0'; s++) {
-        if (s[0] == ';' && !esc && quot == '\0') {
-            break;
-        }
-        switch (s[0]) {
-        case '\\':
-            esc = !esc;
-            if (esc) {
-                continue;
-            }
-            break;
-        case '\"':
-        case '\'':
-            if (!esc) {
-                if (quot == s[0]) {
-                    quot = '\0';
-                } else {
-                    quot = s[0];
-                }
-                continue;
-            }
-            break;
-        case ' ':
-        case '\t':
-            if (!esc && quot == '\0') {
-                goto reg;
-            }
-            break;
-        case '+':
-            if (*pstate != PARSE_STATE_REGULAR) {
-                break;
-            }
-            if (!esc && quot == '\0') {
-                if (s[1] == '=') {
-                    *pstate = PARSE_STATE_APPEND;
-                    s += 2;
-                    goto ret;
-                }
-                break;
-            }
-            break;
-        case '=':
-            if (*pstate != PARSE_STATE_REGULAR) {
-                break;
-            }
-            if (!esc && quot == '\0') {
-                *pstate = PARSE_STATE_EQUAL;
-                arg[len_arg] = '\0';
-                s++;
-                goto ret;
-            }
-            break;
-        }
-        if (len_arg + 2 > a_arg) {
-            a_arg *= 2;
-            arg = srealloc(arg, a_arg);
-        }
-        arg[len_arg++] = s[0];
-        esc = false;
-    }
-
-reg:
-    if (len_arg == 0) {
-        free(arg);
-        return NULL;
-    }
-
-ret:
-    arg[len_arg] = '\0';
-    *ps = s;
-    return arg;
-}
-
-int run_command_line(const char *s)
-{
-    int result = 0;
-    char *arg;
-    char **args;
-    size_t num_args;
-
-    int state;
-
-    int cmd;
-    size_t pref;
-
-    DLOG("running cmd: %s\n", s);
-
-next_segment:
-    state = PARSE_STATE_REGULAR;
-    args = NULL;
-    num_args = 0;
-
-    while (arg = read_arg(&s, &state), arg != NULL) {
-        if (arg[0] == '\0') {
-            continue;
-        }
-        args = sreallocarray(args, num_args + 1, sizeof(*args));
-        args[num_args++] = arg;
-    }
-
-    if (num_args == 0) {
-        goto end;
-    }
-
-    DLOG("got args in state (%d):", state);
-    for (size_t i = 0; i < num_args; i++) {
-        DLOG(" %s", args[i]);
-    }
-    DLOG("\n");
-
-    switch (state) {
-    case PARSE_STATE_REGULAR:
-        for (cmd = 0; cmd < (int) ARRAY_SIZE(Commands); cmd++) {
-            for (pref = 0; args[0][pref] != '\0'; pref++) {
-                if (Commands[cmd][pref] != args[0][pref]) {
-                    break;
-                }
-            }
-            if (args[0][pref] == '\0') {
-                break;
-            }
-        }
-        if (cmd == (int) ARRAY_SIZE(Commands)) {
-            fprintf(stderr, "command '%s' not found\n", args[0]);
-            result = -1;
-        } else {
-            result = run_command(cmd, &args[1], num_args - 1);
-        }
-        break;
-    case PARSE_STATE_EQUAL:
-    case PARSE_STATE_APPEND:
-        result = set_conf(args[0], &args[1], num_args - 1,
-                state == PARSE_STATE_APPEND);
-        switch (result) {
-        case SET_CONF_SINGLE:
-            printf("config variable '%s' expects a single argument\n",
-                    args[0]);
-            break;
-        case SET_CONF_APPEND:
-            printf("config variable '%s' can not be appended to\n",
-                    args[0]);
-            break;
-        case SET_CONF_EXIST:
-            printf("config variable '%s' does not exist\n",
-                    args[0]);
-            break;
-        case -1:
-            printf("unexpected error in `set_conf()`"
-                    " while trying to set: '%s'\n",
-                    args[0]);
-            break;
-        }
-        break;
-    }
-
-    for (size_t i = 0; i < num_args; i++) {
-        free(args[i]);
-    }
-    free(args);
-
-end:
-    while (isblank(s[0])) {
-        s++;
-    }
-    if (s[0] == ';') {
-        s++;
-        if (result == 0) {
-            goto next_segment;
-        }
-    }
-    return result;
-}
-
-/**
- * Parses a config file line by line using `run_command_line()`.
- */
-static int parse_file(FILE *fp)
-{
-    char *line = NULL;
-    size_t a;
-    ssize_t len;
-
-    while ((len = getline(&line, &a, fp)) > 0) {
-        if (line[len - 1] == '\n') {
-            len--;
-            line[len] = '\0';
-        }
-        if (run_command_line(line) != 0) {
-            free(line);
-            return false;
-        }
-    }
-    free(line);
-    if (errno != 0) {
-        fprintf(stderr, "getline: %s\n", strerror(errno));
-        return -1;
-    }
-    return 0;
 }
 
 static char *get_shebang_cmd(FILE *fp, const char *cat)
@@ -501,7 +254,7 @@ static char *get_shebang_cmd(FILE *fp, const char *cat)
     return cmd;
 }
 
-int source_file(const char *path)
+int source_path(const char *path)
 {
     int result;
     FILE *fp, *pp;
@@ -529,11 +282,11 @@ int source_file(const char *path)
             return -1;
         }
         free(cmd);
-        result = parse_file(pp);
+        result = eval_file(pp);
         pclose(pp);
     } else {
         rewind(fp);
-        result = parse_file(fp);
+        result = eval_file(fp);
         fclose(fp);
     }
     return result;

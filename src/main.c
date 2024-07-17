@@ -11,6 +11,7 @@ int main(int argc, char **argv)
 {
     char *conf;
     struct file *file;
+    struct config_entry *interval_entry;
 
     if (!parse_args(argc, argv)) {
         return 1;
@@ -21,42 +22,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    set_default_conf();
+
     if (!Args.no_config) {
         conf = Args.config == NULL ? "autocar.conf" : Args.config;
-        if (!find_autocar_config(conf) ||
-                !source_config(conf) ||
-                !check_config()) {
+        if (!find_autocar_conf(conf) || !source_conf(conf)) {
             return 1;
         }
-        DLOG("PATH=%s\nCC = %s\nC_FLAGS = (", Config.path, Config.cc);
-        for (size_t i = 0; i < Config.num_c_flags; i++) {
-            if (i > 0) {
-                DLOG(" ");
-            }
-            DLOG("%s", Config.c_flags[i]);
+        if (Args.verbose) {
+            dump_conf(stderr);
         }
-        DLOG(")\nC_LIBS = (");
-        for (size_t i = 0; i < Config.num_c_libs; i++) {
-            if (i > 0) {
-                DLOG(" ");
-            }
-            DLOG("%s", Config.c_libs[i]);
-        }
-        DLOG(")\nEXTS = (");
-        for (size_t i = 0; i < EXT_TYPE_MAX; i++) {
-            if (i > 0) {
-                DLOG(" ");
-            }
-            DLOG("%s", Config.exts[i]);
-        }
-        DLOG(")\nBUILD = %s\n"
-                "INTERVAL = %ld\n"
-                "ERR_FILE = %s\n"
-                "PROMPT = %s\n",
-                Config.build,
-                Config.interval,
-                Config.err_file,
-                Config.prompt);
     }
 
     LOG("up and running\n");
@@ -67,6 +42,10 @@ int main(int argc, char **argv)
 
     while (CliRunning) {
         if (!CliWantsPause) {
+            if (check_conf() != 0) {
+                usleep(1000 * 1000);
+                continue;
+            }
             pthread_mutex_lock(&Files.lock);
             if (collect_files() != 0) {
                 DLOG("0: did not reach the end\n");
@@ -79,7 +58,13 @@ int main(int argc, char **argv)
             }
             pthread_mutex_unlock(&Files.lock);
         }
-        usleep(1000 * Config.interval);
+        interval_entry = get_conf("interval", NULL);
+        if (interval_entry == NULL || interval_entry->long_value < 1) {
+            fprintf(stderr, "invalid 'interval' value, please fix it\n");
+            usleep(1000 * 1000);
+            continue;
+        }
+        usleep(1000 * interval_entry->long_value);
     }
 
     /* free resources */
@@ -90,26 +75,6 @@ int main(int argc, char **argv)
     }
     free(Files.ptr);
 
-    free(Config.cc);
-
-    for (size_t i = 0; i < Config.num_c_flags; i++) {
-        free(Config.c_flags[i]);
-    }
-    free(Config.c_flags);
-
-    for (size_t i = 0; i < Config.num_c_libs; i++) {
-        free(Config.c_libs[i]);
-    }
-    free(Config.c_libs);
-
-    for (int i = 0; i < EXT_TYPE_FOLDER; i++) {
-        free(Config.exts[i]);
-    }
-
-    free(Config.build);
-
-    free(Config.err_file);
-
-    free(Config.prompt);
+    clear_conf();
     return 0;
 }

@@ -25,12 +25,21 @@ static void signal_handler(int sig)
 static void read_line(void)
 {
     char *line;
+    struct config_entry *prompt_entry;
+    char *prompt;
 
-    line = readline(Config.prompt);
+    prompt_entry = get_conf("prompt", NULL);
+    if (prompt_entry != NULL && prompt_entry->num_values > 0) {
+        prompt = prompt_entry->values[0];
+    } else {
+        prompt = NULL;
+    }
+    line = readline(prompt);
     if (line == NULL) {
         return;
     }
     run_command_line(line);
+    add_history(line);
     free(line);
 }
 

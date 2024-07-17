@@ -8,6 +8,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -16,7 +17,240 @@
 
 struct config Config;
 
-bool find_autocar_config(const char *name_or_path)
+struct config_entry *get_conf(const char *name, size_t *pindex)
+{
+    size_t l, m, r;
+    int cmp;
+    struct config_entry *entry;
+
+    l = 0;
+    r = Config.num_entries;
+    while (l < r) {
+        m = (l + r) / 2;
+
+        entry = &Config.entries[m];
+        cmp = strcasecmp(entry->name, name);
+        if (cmp == 0) {
+            if (pindex != NULL) {
+                *pindex = m;
+            }
+            return entry;
+        }
+        if (cmp < 0) {
+            l = m + 1;
+        } else {
+            r = m;
+        }
+    }
+    if (pindex != NULL) {
+        *pindex = r;
+    }
+    return NULL;
+}
+
+/**
+ * Returns the index of the given value within the entry or `SIZE_MAX` if the
+ * entry was not found.
+ */
+static size_t get_entry_value_index(struct config_entry *ce, const char *value)
+{
+    for (size_t i = 0; i < ce->num_values; i++) {
+        if (strcmp(ce->values[i], value) == 0) {
+            return i;
+        }
+    }
+    return SIZE_MAX;
+}
+
+int set_conf(const char *name, const char **values,
+        size_t num_values, int mode)
+{
+    size_t index;
+    struct config_entry *entry;
+    char *upper;
+    char *env;
+    size_t env_len, env_i;
+
+    DLOG("changing '%s' with:", name);
+    for (size_t i = 0; i < num_values; i++) {
+        DLOG(" %s", values[i]);
+    }
+    DLOG("\n");
+
+    entry = get_conf(name, &index);
+    if (entry == NULL) {
+        Config.entries = sreallocarray(Config.entries,
+                Config.num_entries + 1, sizeof(*Config.entries));
+        memmove(&Config.entries[index + 1], &Config.entries[index],
+                sizeof(*Config.entries) * (Config.num_entries - index));
+        entry = &Config.entries[index];
+        upper = smalloc(strlen(name) + 1);
+        entry->name = upper;
+        for (; *name != '\0'; name++, upper++) {
+            upper[0] = toupper(name[0]);
+        }
+        upper[0] = '\0';
+        entry->values = NULL;
+        entry->num_values = 0;
+        entry->long_value = 0;
+        Config.num_entries++;
+    }
+
+    switch (mode) {
+    case SET_CONF_MODE_SET:
+        for (size_t i = 0; i < entry->num_values; i++) {
+            free(entry->values[i]);
+        }
+        entry->values = sreallocarray(entry->values,
+                num_values, sizeof(*entry->values));
+        for (size_t i = 0; i < num_values; i++) {
+            entry->values[i] = sstrdup(values[i]);
+        }
+        entry->num_values = num_values;
+        break;
+
+    case SET_CONF_MODE_APPEND:
+        entry->values = sreallocarray(entry->values,
+                num_values + entry->num_values, sizeof(*entry->values));
+        for (size_t i = 0; i < num_values; i++) {
+            if (get_entry_value_index(entry, values[i]) == SIZE_MAX) {
+                entry->values[entry->num_values++] = strdup(values[i]);
+            }
+        }
+        break;
+
+    case SET_CONF_MODE_SUBTRACT:
+        for (size_t i = 0; i < num_values; i++) {
+            index = get_entry_value_index(entry, values[i]);
+            if (index != SIZE_MAX) {
+                entry->num_values--;
+                free(entry->values[index]);
+                memmove(&entry->values[index],
+                        &entry->values[index + 1],
+                        sizeof(*entry->values) * (entry->num_values - index));
+            }
+        }
+        break;
+    }
+
+    if (entry->num_values != 0) {
+        entry->long_value = strtol(entry->values[0], NULL, 0);
+    }
+
+    DLOG("'%s' is now:", entry->name);
+    for (size_t i = 0; i < entry->num_values; i++) {
+        DLOG(" %s", entry->values[i]);
+    }
+    DLOG("\n");
+
+    env_len = entry->num_values == 0 ? 1 : 0;
+    for (size_t i = 0; i < entry->num_values; i++) {
+        env_len += strlen(entry->values[i]) + 1;
+    }
+    env = smalloc(env_len);
+    env_i = 0;
+    for (size_t i = 0, len; i < entry->num_values; i++) {
+        if (i > 0) {
+            env[env_i++] = ' ';
+        }
+        len = strlen(entry->values[i]);
+        memcpy(&env[env_i], entry->values[i], len);
+        env_i += len;
+    }
+    env[env_i] = '\0';
+    setenv(entry->name, env, 1);
+    free(env);
+    return 0;
+}
+
+static inline void print_value(FILE *fp, char *val)
+{
+    if (val[0] == '\0') {
+        fputc('\'', fp);
+        fputc('\'', fp);
+    }
+    for (; val[0] != '\0'; val++) {
+        switch (val[0]) {
+        case ';':
+        case '\'':
+        case '\"':
+        case ' ':
+        case '\t':
+            fputc('\\', fp);
+            break;
+        }
+        fputc(val[0], fp);
+    }
+}
+
+void dump_conf(FILE *fp)
+{
+    struct config_entry *entry;
+
+    for (size_t i = 0; i < Config.num_entries; i++) {
+        entry = &Config.entries[i];
+        print_value(fp, entry->name);
+        fputc(' ', fp);
+        fputc('=', fp);
+        for (size_t i = 0; i < entry->num_values; i++) {
+            fputc(' ', fp);
+            print_value(fp, entry->values[i]);
+        }
+        fputc('\n', fp);
+    }
+}
+
+int check_conf(void)
+{
+    static const struct {
+        const char *name;
+        size_t num;
+    } checks[] = {
+        { "cc", 1 },
+        { "build", 1 },
+        { "extensions", EXT_TYPE_MAX },
+        { "c_flags", 0 },
+        { "c_libs", 0 },
+    };
+    static const struct {
+        const char *name;
+        int type;
+    } checks_ext[] = {
+        { "EXT_BUILD", EXT_TYPE_OBJECT },
+        { "EXT_SOURCE", EXT_TYPE_SOURCE },
+        { "EXT_HEADER", EXT_TYPE_HEADER },
+    };
+    struct config_entry *entry, *exts_entry;
+
+    for (size_t i = 0; i < ARRAY_SIZE(checks); i++) {
+        entry = get_conf(checks[i].name, NULL);
+        if (entry == NULL) {
+            if (checks[i].num == 0) {
+                set_conf(checks[i].name, NULL, 0, 0);
+                continue;
+            }
+        } else if (checks[i].num == entry->num_values ||
+                checks[i].num == 0) {
+            continue;
+        }
+        fprintf(stderr, "can not parse because '%s'"
+                "does not have exactly '%zu' values\n",
+                checks[i].name, checks[i].num);
+        return -1;
+    }
+
+    exts_entry = get_conf("extensions", NULL);
+    for (size_t i = 0; i < ARRAY_SIZE(checks_ext); i++) {
+        entry = get_conf(checks_ext[i].name, NULL);
+        if (entry != NULL && entry->num_values == 1) {
+            free(exts_entry->values[checks_ext[i].type]);
+            exts_entry->values[checks_ext[i].type] = sstrdup(entry->values[0]);
+        }
+    }
+    return 0;
+}
+
+bool find_autocar_conf(const char *name_or_path)
 {
     struct stat st;
     /* used to store "/\0" */
@@ -51,141 +285,13 @@ bool find_autocar_config(const char *name_or_path)
     return true;
 }
 
-int set_conf(const char *name, char **args, size_t num_args, bool append)
+bool source_conf(const char *conf)
 {
-    size_t off;
-
-#define CHECK_SINGLE_APPEND() \
-    if (num_args != 1) { \
-        return SET_CONF_SINGLE; \
-    } \
-    if (append) { \
-        return SET_CONF_APPEND; \
-    }
-
-    switch (name[0]) {
-    case 'b':
-    case 'B':
-        if (strcasecmp(&name[1], "uild") != 0) {
-            return SET_CONF_EXIST;
-        }
-        CHECK_SINGLE_APPEND();
-        free(Config.build);
-        Config.build = get_relative_path(args[0]);
-        if (Config.build == NULL) {
-            return -1;
-        }
-        break;
-
-    case 'c':
-    case 'C':
-        if (tolower(name[1]) == 'c') {
-            if (name[2] != '\0') {
-                return SET_CONF_EXIST;
-            }
-            CHECK_SINGLE_APPEND();
-            free(Config.cc);
-            Config.cc = sstrdup(args[0]);
-        } else if (name[1] == '_' || name[1] == ' ') {
-            if (strcasecmp(&name[2], "flags") == 0) {
-                off = append ? Config.num_c_flags : 0;
-                if (!append) {
-                    for (size_t i = 0; i < Config.num_c_flags; i++) {
-                        free(Config.c_flags[i]);
-                    }
-                }
-                Config.c_flags = sreallocarray(Config.c_flags,
-                        off + num_args, sizeof(*Config.c_flags));
-                for (size_t i = 0; i < num_args; i++) {
-                    Config.c_flags[off + i] = sstrdup(args[i]);
-                }
-                Config.num_c_flags = off + num_args;
-            } else if (strcasecmp(&name[2], "libs") == 0) {
-                off = append ? Config.num_c_libs : 0;
-                if (!append) {
-                    for (size_t i = 0; i < Config.num_c_libs; i++) {
-                        free(Config.c_libs[i]);
-                    }
-                }
-                Config.c_libs = sreallocarray(Config.c_libs,
-                        off + num_args, sizeof(*Config.c_libs));
-                for (size_t i = 0; i < num_args; i++) {
-                    Config.c_libs[off + i] = sstrdup(args[i]);
-                }
-                Config.num_c_libs = off + num_args;
-            } else {
-                return SET_CONF_EXIST;
-            }
-        } else {
-            return SET_CONF_EXIST;
-        }
-        break;
-
-    case 'd':
-    case 'D':
-        if (strcasecmp(&name[1], "iff") != 0) {
-            return SET_CONF_EXIST;
-        }
-        CHECK_SINGLE_APPEND();
-        free(Config.diff);
-        Config.diff = sstrdup(args[0]);
-        break;
-
-    case 'e':
-    case 'E':
-        if (tolower(name[1]) != 'x' ||
-                tolower(name[2]) != 't' || name[3] != '_') {
-            return SET_CONF_EXIST;
-        }
-        if (strcasecmp(&name[4], "source") == 0) {
-            CHECK_SINGLE_APPEND();
-            free(Config.exts[EXT_TYPE_SOURCE]);
-            Config.exts[EXT_TYPE_SOURCE] = sstrdup(args[0]);
-        } else if (strcasecmp(&name[4], "header") == 0) {
-            CHECK_SINGLE_APPEND();
-            free(Config.exts[EXT_TYPE_OBJECT]);
-            Config.exts[EXT_TYPE_OBJECT] = sstrdup(args[0]);
-        } else if (strcasecmp(&name[4], "build") == 0) {
-            CHECK_SINGLE_APPEND();
-            free(Config.exts[EXT_TYPE_OBJECT]);
-            Config.exts[EXT_TYPE_OBJECT] = sstrdup(args[0]);
-        } else {
-            return SET_CONF_EXIST;
-        }
-        break;
-
-    case 'i':
-    case 'I':
-        if (strcasecmp(&name[1], "nterval") != 0) {
-            return SET_CONF_EXIST;
-        }
-        CHECK_SINGLE_APPEND();
-        Config.interval = strtol(args[0], NULL, 0);
-        break;
-
-    case 'p':
-    case 'P':
-        if (strcasecmp(&name[1], "rompt") != 0) {
-            return SET_CONF_EXIST;
-        }
-        CHECK_SINGLE_APPEND();
-        free(Config.prompt);
-        Config.prompt = sstrdup(args[0]);
-        break;
-    default:
-        return SET_CONF_EXIST;
-    }
-    return 0;
-#undef CHECK_SINGLE_APPEND
+    set_conf("config_path", &conf, 1, SET_CONF_MODE_SET);
+    return source_path(conf) == 0;
 }
 
-bool source_config(const char *conf)
-{
-    Config.path = sstrdup(conf);
-    return source_file(conf) == 0;
-}
-
-bool check_config(void)
+void set_default_conf(void)
 {
     static const char *default_extensions[] = {
         [EXT_TYPE_OTHER] = "",
@@ -195,42 +301,34 @@ bool check_config(void)
         [EXT_TYPE_EXECUTABLE] = "",
         [EXT_TYPE_FOLDER] = "",
     };
-    static const char *default_prompt = ">>> ";
+    static const char *default_compiler = "gcc";
+    static const char *default_diff = "diff";
     static const char *default_build = "build";
+    static const char *default_flags[] = {
+        "-g", "-fsanitize=address", "-Wall", "-Wextra", "-Werror"
+    };
+    static const char *default_interval = "100";
+    static const char *default_prompt = ">>> ";
 
-    if (Config.cc == NULL) {
-        Config.cc = sstrdup("gcc");
-    }
-    if (Config.diff == NULL) {
-        Config.diff = sstrdup("diff");
-    }
-    if (Config.c_flags == NULL) {
-        Config.c_flags = sstrdup("-g -fsanitize=address -Wall -Wextra -Werror");
-    }
+    set_conf("cc", &default_compiler, 1, SET_CONF_MODE_SET);
+    set_conf("diff", &default_diff, 1, SET_CONF_MODE_SET);
+    set_conf("build", &default_build, 1, SET_CONF_MODE_SET);
+    set_conf("c_flags", default_flags, ARRAY_SIZE(default_flags), SET_CONF_MODE_SET);
+    set_conf("extensions", default_extensions, EXT_TYPE_MAX, SET_CONF_MODE_SET);
+    set_conf("interval", &default_interval, 1, SET_CONF_MODE_SET);
+    set_conf("prompt", &default_prompt, 1, SET_CONF_MODE_SET);
+}
 
-    for (int i = 0; i < EXT_TYPE_MAX; i++) {
-        if (Config.exts[i] == NULL) {
-            Config.exts[i] = sstrdup(default_extensions[i]);
+void clear_conf(void)
+{
+    struct config_entry *entry;
+
+    for (size_t i = 0; i < Config.num_entries; i++) {
+        entry = &Config.entries[i];
+        free(entry->name);
+        for (size_t i = 0; i < entry->num_values; i++) {
+            free(entry->values[i]);
         }
+        free(entry->values);
     }
-    if (Config.interval < 0) {
-        fprintf(stderr, "invalid interval value: %ld\n", Config.interval);
-        return false;
-    }
-    if (Config.interval == 0) {
-        Config.interval = 100;
-    }
-
-    if (Config.prompt == NULL) {
-        Config.prompt = sstrdup(default_prompt);
-    }
-
-    if (Config.build == NULL) {
-        Config.build = sstrdup(default_build);
-    }
-
-    if (create_recursive_directory(Config.build) == -1) {
-        return false;
-    }
-    return true;
 }

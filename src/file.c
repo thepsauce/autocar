@@ -53,13 +53,16 @@ static char *get_extension(char *path)
  */
 static int get_extension_type(/* const */ char *e)
 {
+    struct config_entry *entry;
     char *ext, *end;
     bool repl;
     int cmp;
 
+    entry = get_conf("extensions", NULL);
+
     e = get_extension(e);
-    for (int i = 0; i < EXT_TYPE_MAX; i++) {
-        ext = Config.exts[i];
+    for (size_t i = 0; i < EXT_TYPE_MAX; i++) {
+        ext = entry->values[i];
         if (ext == NULL) {
             continue;
         }
@@ -177,6 +180,11 @@ struct file *add_file(char *path, int type, int flags)
     if (file != NULL) {
         DLOG("file already existed\n");
         free(path);
+        flags |= (file->flags & (FLAG_EXISTS | FLAG_HAS_MAIN));
+        if (file->flags != flags) {
+            flags |= FLAG_IS_FRESH;
+        }
+        file->flags = flags;
         return file;
     }
 
@@ -337,21 +345,34 @@ static bool object_has_main(const char *o)
  */
 static bool rebuild_object(struct file *src, struct file *obj)
 {
-    char *args[6 + Config.num_c_flags];
+    struct config_entry *cc_entry,
+                        *c_flags_entry,
+                        *err_file_entry;
+    char *err_file;
 
-    args[0] = Config.cc;
-    for (size_t f = 0; f < Config.num_c_flags; f++) {
-        args[f + 1] = Config.c_flags[f];
+    cc_entry = get_conf("cc", NULL);
+    c_flags_entry = get_conf("c_flags", NULL);
+    err_file_entry = get_conf("err_file", NULL);
+
+    err_file = err_file_entry == NULL || err_file_entry->num_values == 0 ?
+        NULL : err_file_entry->values[0];
+
+    char *args[6 + c_flags_entry->num_values];
+    int argi = 0;
+
+    args[argi++] = cc_entry->values[0];
+    for (size_t f = 0; f < c_flags_entry->num_values; f++) {
+        args[argi++] = c_flags_entry->values[f];
     }
-    args[Config.num_c_flags + 1] = (char*) "-c";
-    args[Config.num_c_flags + 2] = src->path;
-    args[Config.num_c_flags + 3] = (char*) "-o";
-    args[Config.num_c_flags + 4] = obj->path;
-    args[Config.num_c_flags + 5] = NULL;
+    args[argi++] = (char*) "-c";
+    args[argi++] = src->path;
+    args[argi++] = (char*) "-o";
+    args[argi++] = obj->path;
+    args[argi] = NULL;
     if (create_recursive_directory(obj->path) == -1) {
         return false;
     }
-    if (run_executable(args, Config.err_file, NULL) != 0) {
+    if (run_executable(args, err_file, NULL) != 0) {
         obj->flags &= ~FLAG_EXISTS;
         return false;
     }
@@ -366,17 +387,22 @@ static bool rebuild_object(struct file *src, struct file *obj)
 
 static inline char *get_object_path(const char *path, const char *ext)
 {
+    struct config_entry *exts_entry;
+    struct config_entry *build_entry;
     char *e;
     size_t l;
     size_t lb;
     char *s;
 
-    e = Config.exts[EXT_TYPE_OBJECT];
+    exts_entry = get_conf("extensions", NULL);
+    build_entry = get_conf("build", NULL);
+
+    e = exts_entry->values[EXT_TYPE_OBJECT];
     l = e == NULL ? 0 : strlen(e);
-    lb = strlen(Config.build);
+    lb = strlen(build_entry->values[0]);
 
     s = smalloc(lb + 1 + (ext - path) + l + 1);
-    memcpy(s, Config.build, lb);
+    memcpy(s, build_entry->values[0], lb);
     s[lb] = '/';
     memcpy(&s[lb + 1], path, ext - path);
     memcpy(&s[lb + 1 + ext - path], e, l);
@@ -430,12 +456,26 @@ static bool relink_executable(struct file *exec,
         struct file **objects, size_t num_objects,
         struct file *main_object)
 {
-    char *args[1 + Config.num_c_flags + num_objects + 3 + Config.num_c_libs + 1];
+    struct config_entry *cc_entry,
+                        *c_flags_entry,
+                        *c_libs_entry,
+                        *err_file_entry;
+    char *err_file;
+
+    cc_entry = get_conf("cc", NULL);
+    c_flags_entry = get_conf("c_flags", NULL);
+    c_libs_entry = get_conf("c_libs", NULL);
+    err_file_entry = get_conf("err_file", NULL);
+    err_file = err_file_entry == NULL || err_file_entry->num_values == 0 ?
+        NULL : err_file_entry->values[0];
+
+    char *args[1 + c_flags_entry->num_values + num_objects + 3 +
+        c_libs_entry->num_values + + 1];
     size_t argi = 0;
 
-    args[argi++] = Config.cc;
-    for (size_t i = 0; i < Config.num_c_flags; i++) {
-        args[argi++] = Config.c_flags[i];
+    args[argi++] = cc_entry->values[0];
+    for (size_t i = 0; i < c_flags_entry->num_values; i++) {
+        args[argi++] = c_flags_entry->values[i];
     }
     for (size_t i = 0; i < num_objects; i++) {
         args[argi++] = objects[i]->path;
@@ -443,14 +483,14 @@ static bool relink_executable(struct file *exec,
     args[argi++] = main_object->path;
     args[argi++] = "-o";
     args[argi++] = exec->path;
-    for (size_t i = 0; i < Config.num_c_libs; i++) {
-        args[argi++] = Config.c_libs[i];
+    for (size_t i = 0; i < c_libs_entry->num_values; i++) {
+        args[argi++] = c_libs_entry->values[i];
     }
     args[argi] = NULL;
     if (create_recursive_directory(exec->path) == -1) {
         return false;
     }
-    if (run_executable(args, Config.err_file, NULL) != 0) {
+    if (run_executable(args, err_file, NULL) != 0) {
         return false;
     }
     exec->flags |= FLAG_EXISTS;
@@ -459,11 +499,13 @@ static bool relink_executable(struct file *exec,
 
 static inline char *get_exec_path(const char *path, char *ext)
 {
+    struct config_entry *exts_entry;
     char *e;
     size_t l;
     char *s;
 
-    e = Config.exts[EXT_TYPE_EXECUTABLE];
+    exts_entry = get_conf("extensions", NULL);
+    e = exts_entry->values[EXT_TYPE_EXECUTABLE];
     l = e == NULL ? 0 : strlen(e) + 1;
     s = smalloc(ext - path + l + 1);
     memcpy(s, path, ext - path);
@@ -516,6 +558,7 @@ bool link_executables(void)
 
 bool run_tests(void)
 {
+    struct config_entry *diff_entry;
     struct file *file, *other, *input, *output, *data;
     bool update;
     char *args[4];
@@ -525,11 +568,14 @@ bool run_tests(void)
     size_t len, l;
     char *output_path;
 
+    diff_entry = get_conf("diff", NULL);
+
     for (size_t i = 0; i < Files.num; i++) {
         file = Files.ptr[i];
         if (file->type != EXT_TYPE_EXECUTABLE ||
                 (file->flags & (FLAG_IS_TEST | FLAG_EXISTS)) !=
                 (FLAG_IS_TEST | FLAG_EXISTS)) {
+            DLOG("'%s' is not a test\n", file->path);
             continue;
         }
 
@@ -574,6 +620,7 @@ bool run_tests(void)
         }
 
         if (input == NULL && data == NULL) {
+            DLOG("not running '%s'\n", file->path);
             continue;
         }
 
@@ -584,6 +631,8 @@ bool run_tests(void)
             output = add_file(output_path, EXT_TYPE_OTHER, FLAG_IS_TEST);
             free(output_path);
             stat_file(output);
+            update = true;
+        } else if ((output->flags & FLAG_IS_FRESH)) {
             update = true;
         }
         if (output->st.st_mtime < file->st.st_mtime) {
@@ -596,7 +645,10 @@ bool run_tests(void)
             update = true;
         }
 
+        output->flags &= ~FLAG_IS_FRESH;
+
         if (!update) {
+            DLOG("test has not changed\n");
             continue;
         }
 
@@ -609,7 +661,7 @@ bool run_tests(void)
 
         fprintf(stderr, "| %s |\n", output->path);
         if (data != NULL) {
-            args[0] = Config.diff;
+            args[0] = diff_entry->values[0];
             args[1] = data->path;
             args[2] = output->path;
             args[3] = NULL;

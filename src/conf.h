@@ -2,6 +2,7 @@
 #define CONF_H
 
 #include <stdbool.h>
+#include <stdio.h>
 
 #define EXT_TYPE_OTHER 0
 #define EXT_TYPE_SOURCE 1
@@ -11,32 +12,46 @@
 #define EXT_TYPE_FOLDER 5
 #define EXT_TYPE_MAX 6
 
+struct config_entry {
+    int type;
+    char *name;
+    char **values;
+    size_t num_values;
+    long long_value;
+};
+
 extern struct config {
-    /// path of the config file
-    char *path;
-    /// compiler
-    char *cc;
-    /// diff program
-    char *diff;
-    /// compiler flags
-    char **c_flags;
-    /// number of compiler flags
-    size_t num_c_flags;
-    /// linker libraries
-    char **c_libs;
-    /// number of linker libraries
-    size_t num_c_libs;
-    /// build folder
-    char *build;
-    /// file extensions of different file types
-    char *exts[EXT_TYPE_MAX];
-    /// rebuild interval in milliseconds
-    long interval;
-    /// output file for compiler errors
-    char *err_file;
-    /// prompt for the command line
-    char *prompt;
+    struct config_entry *entries;
+    size_t num_entries;
 } Config;
+
+/**
+ * @brief Gets the entry with given name.
+ *
+ * @param name Name of the entry to search for.
+ * @param pindex Where to store the optimal index, may be `NULL`.
+ *
+ * @return Found entry or `NULL` if none was found.
+ */
+struct config_entry *get_conf(const char *name, size_t *pindex);
+
+#define SET_CONF_MODE_SET 0
+#define SET_CONF_MODE_APPEND 1
+#define SET_CONF_MODE_SUBTRACT 2
+
+/**
+ * @brief Sets entry with given name to given values, if no entry exists with
+ * that name, it is created.
+ *
+ * @param name Name of the entry to set.
+ * @param values New values of the entry.
+ * @param num_values Number of the new values.
+ * @param Mode to use (see above).
+ *
+ * @return Always 0.
+ */
+int set_conf(const char *name, const char **values,
+        size_t num_values, int mode);
 
 /**
  * @brief Looks for the autocar config file.
@@ -49,20 +64,17 @@ extern struct config {
  *
  * @return Whether a config file was found.
  */
-bool find_autocar_config(const char *name_or_path);
-
-/* additional error codes for `set_conf()` */
-
-#define SET_CONF_SINGLE 1
-#define SET_CONF_APPEND 2
-#define SET_CONF_EXIST 3
+bool find_autocar_conf(const char *name_or_path);
 
 /**
- * @brief Sets a variable in the config.
- *
- * @return One of the above error codes or -1 on failure, 0 on success.
+ * @brief Prints all variable correctly escaped to given file pointer
  */
-int set_conf(const char *name, char **args, size_t num_args, bool append);
+void dump_conf(FILE *fp);
+
+/**
+ * @brief Checks whether the config is ready for compiling.
+ */
+int check_conf(void);
 
 /**
  * @brief Sources the found config file.
@@ -71,7 +83,7 @@ int set_conf(const char *name, char **args, size_t num_args, bool append);
  * other valid path). It opens a file at given path and parses it. Results are
  * stored in `Config`.
  *
- * @see find_autocar_config()
+ * @see find_autocar_conf()
  * @see source_file()
  *
  * @param conf Path to the config file.
@@ -79,19 +91,19 @@ int set_conf(const char *name, char **args, size_t num_args, bool append);
  * @return Whether the config was in a valid format and the file was read
  * successfully.
  */
-bool source_config(const char *conf);
+bool source_conf(const char *conf);
 
 /**
- * @brief Checks the config values for correctness.
+ * @brief Sets the default config values.
  *
- * When `Config.sources`, `Config.tests` or `Config.build` do not exist, they
- * are created, if any `Config` parameter is `NULL`, the C default is assumed.
- *
- * @see source_config()
- *
- * @return Whether the config values are correct.
+ * @see source_conf()
  */
-bool check_config(void);
+void set_default_conf(void);
+
+/**
+ * @brief Clears all variables in the config.
+ */
+void clear_conf(void);
 
 #endif
 

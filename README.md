@@ -14,7 +14,7 @@ programs, that is why the cli includes a `run` command to run any executable
 that was built. However test files are all run if either a corresponding .data
 or .input file exists for them.
 
-# Config
+## Config
 
 | Variable name | Purpose | Default |
 | ------------- | ------- | ------- |
@@ -30,7 +30,7 @@ or .input file exists for them.
 | ERR\_FILE | where errors of the compiler should go | stderr |
 | PROMPT | customize the prompt of the cli | >>>  |
 
-# Arguments
+## Arguments
 
 | Flag | Purpose |
 | ---- | ------- |
@@ -40,7 +40,7 @@ or .input file exists for them.
 |--no-config | start without any config; load default options |
 |--allow-parent-paths | allows paths to be in a parent directory |
 
-# Tests
+## Tests
 
 Tests are all ran if they have a main object, autocar simply checks if an object
 file has a function called `main` and then declares that object as main object.
@@ -49,7 +49,7 @@ extension. If a .data file is present, this data is used to compare against the
 output of the test. If a .input file is present, it is sent as `stdin` into the
 test. If neither .input nor .data are present, the test is ignored.
 
-# CLI
+## CLI
 
 The cli allows adding of (test) files/folders and running.
 
@@ -63,22 +63,70 @@ The cli allows adding of (test) files/folders and running.
 8. `run [number]` run given index, use `run` without any arguments to list all
    main programs
 9. `quit` quit all
+10. `save [file]` save the current config to a file (default is taken if no argument)
 
-A command line may be of two forms:
-1. `<command> <args>`
+
+#### Variables
+
+See below on how to set a variable.
+
+Variables are stored internally as upper case values in a sorted list, every
+variable has an array of strings as value. Case is ignored for variables:
+`a` and `A` are the same variables. Variables have no limit on their name, one
+could set a variable with name: `{holy* this/ is a weirdname(* `. But when
+setting a variable with this name, all special characters have to be escaped.
+
+#### Command line
+
+A command line may be of these forms:
+1. `<command> <args> [> output]`
 2. `<name> = <args>`
+3. `<name> += <args>`
+4. `<name> -= <args>`
+5. `<name> := <shell>`
+6. `:<shell>`
 
 Any argument, command or name can be quoted and quotation marks as well as
 spaces can be escaped. To write multiple commands on a single line, use ';', the
 semicolon can also be escaped.
 
-The first one executes the command with given arguments. The second one sets the
-config value called \<name\> to given arguments.
+The first one executes the command with given arguments and optionally redirects
+the output to a file, note that this only works when using `config`; use this to
+write the configuration variables to a file. The second one sets the config
+value called `<name>` to given arguments. `+=` and `-=` also modify a variable
+but `+=` appends and `-=` subtracts to/from the values. `:=` runs given shell
+command and sets the variable to that; it is read as space separated array.
+`:<shell>` simply runs given shell command.
+
+Note on `<shell>`:
+Sequences like `$1` are not sent to the shell but are still interpreted by the
+command parser.
+
+#### Dollar $ expansion
+
+There are two interpretations the command parser does:
+1. `$[0-9]+`
+2. `$[^ \t]+`
+
+The first expands to the the file path of the file at given index starting from
+1.
+
+The second expands to the variable value like this:
+```sh
+A=1 2 3
+echo $A
+1 2 3
+echo a$A
+a1
+B=$A $A
+echo $B
+1 2 3 1 2 3
+```
 
 If any file should be rebuild, the best way is to remove the object
 file/executable from the file system.
 
-# Todo
+## Todo
 
 - cleanup
 - build script
