@@ -206,11 +206,11 @@ int check_conf(void)
         const char *name;
         size_t num;
     } checks[] = {
-        { "cc", 1 },
-        { "build", 1 },
-        { "extensions", EXT_TYPE_MAX },
-        { "c_flags", 0 },
-        { "c_libs", 0 },
+        { "CC", 1 },
+        { "BUILD", 1 },
+        { "EXTENSIONS", EXT_TYPE_MAX },
+        { "C_FLAGS", 0 },
+        { "C_LIBS", 0 },
     };
     static const struct {
         const char *name;
