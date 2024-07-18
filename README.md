@@ -26,6 +26,7 @@ or .input file exists for them.
 | EXT\_SOURCE | file extensions of source files, multiple can be specified separated by \| | .c |
 | EXT\_HEADER | file extensions of header files | .h |
 | EXT\_BUILD | file extensions of build files | .o |
+| IGNORE\_HEADER\_CHANGE | if header files should be checked for changes | false |
 | INTERVAL | re-check interval in milliseconds | 100 |
 | ERR\_FILE | where errors of the compiler should go | stderr |
 | PROMPT | customize the prompt of the cli | >>>  |
