@@ -16,6 +16,8 @@ extern struct program_arguments {
     bool no_config;
     char **files;
     size_t num_files;
+    char *str_interval;
+    long interval;
 } Args;
 
 bool parse_args(int argc, char **argv);

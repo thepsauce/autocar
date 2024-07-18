@@ -11,7 +11,6 @@ int main(int argc, char **argv)
 {
     char *conf;
     struct file *file;
-    struct config_entry *interval_entry;
 
     if (!parse_args(argc, argv)) {
         return 1;
@@ -20,6 +19,14 @@ int main(int argc, char **argv)
     if (Args.needs_help) {
         usage(stdout, argv[0]);
         return 1;
+    }
+
+    if (Args.str_interval != NULL) {
+        Args.interval = strtoll(Args.str_interval, NULL, 0);
+        if (Args.interval < 0) {
+            printf("invalid interval value\n");
+            return 1;
+        }
     }
 
     set_default_conf();
@@ -38,7 +45,9 @@ int main(int argc, char **argv)
 
     pthread_mutex_init(&Files.lock, NULL);
 
-    run_cli();
+    if (Args.interval > 0) {
+        run_cli();
+    }
 
     while (CliRunning) {
         if (!CliWantsPause) {
@@ -58,13 +67,10 @@ int main(int argc, char **argv)
             }
             pthread_mutex_unlock(&Files.lock);
         }
-        interval_entry = get_conf("interval", NULL);
-        if (interval_entry == NULL || interval_entry->long_value < 1) {
-            fprintf(stderr, "invalid 'interval' value, please fix it\n");
-            usleep(1000 * 1000);
-            continue;
+        if (Args.interval == 0) {
+            break;
         }
-        usleep(1000 * interval_entry->long_value);
+        usleep(Args.interval);
     }
 
     /* free resources */

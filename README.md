@@ -27,7 +27,6 @@ or .input file exists for them.
 | EXT\_HEADER | file extensions of header files | .h |
 | EXT\_BUILD | file extensions of build files | .o |
 | IGNORE\_HEADER\_CHANGE | if header files should be checked for changes | false |
-| INTERVAL | re-check interval in milliseconds | 100 |
 | ERR\_FILE | where errors of the compiler should go | stderr |
 | PROMPT | customize the prompt of the cli | >>>  |
 
@@ -35,11 +34,12 @@ or .input file exists for them.
 
 | Flag | Purpose |
 | ---- | ------- |
-|--help\|-h | shows all arguments |
-|--verbose\|-v [arg] | enable verbose output (`-vdebug` for maximum verbosity) |
+|--allow-parent-paths\|-a | allows paths to be in a parent directory |
 |--config\|-c \<name\> | specify a config (default: `autocar.conf`) |
-|--no-config | start without any config; load default options |
-|--allow-parent-paths | allows paths to be in a parent directory |
+|--help\|-h | shows all arguments |
+|--interval\|-i \<number\> | repeat interval, if this is 0, there is just a single iteration |
+|--no-config\|-n | start without any config; load default options |
+|--verbose\|-v [arg] | enable verbose output (`-vdebug` for maximum verbosity) |
 
 ## Tests
 
@@ -58,8 +58,8 @@ The cli allows adding of (test) files/folders and running.
 2. `config` show all config options
 3. `delete [files]` deletes given files from the file list
 4. `echo [args]` prints the expanded arguments to stdout
-5. `help [args]` show help
-6. `generate <shell|make>` generate a shell or make build file
+5. `generate <shell|make>` generate a shell or make build file
+6. `help [args]` show help
 7. `list` list all files
 8. `pause` un-/pause the builder
 9. `run <name> <args>` run file with given name. Use `run` without any arguments

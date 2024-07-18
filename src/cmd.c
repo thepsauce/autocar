@@ -31,13 +31,13 @@
 #include "cmd_source.h"
 
 const struct command Commands[] = {
-    [CMD_ADD] = { "add", cmd_add, "[files] [-tr files]", "add files to"
-        " the file list" },
+    [CMD_ADD] = { "add", cmd_add, "[files] [-tr files]",
+        "add files to the file list" },
     [CMD_CONFIG] = { "config", cmd_config, "", "show all config options" },
-    [CMD_DELETE] = { "delete", cmd_delete, "[files]", "deletes given"
-        " files from the file list" },
-    [CMD_ECHO] = { "echo", cmd_echo, "[args]", "prints the expandend"
-        " arguments to stdout" },
+    [CMD_DELETE] = { "delete", cmd_delete, "[files]",
+        "deletes given files from the file list" },
+    [CMD_ECHO] = { "echo", cmd_echo, "[args]",
+        "prints the expandend arguments to stdout" },
     [CMD_HELP] = { "help", cmd_help, "[args]",
         "prints this help or only specific commands" },
     [CMD_GENERATE] = { "generate", cmd_generate, "<shell|make>",
@@ -48,8 +48,8 @@ const struct command Commands[] = {
         "run file with" "given name. Use `run` without any arguments\n"
         "  to list all main programs.\n"
         "  Use `run $<index> [args]` for convenience" },
-    [CMD_SOURCE] = { "source", cmd_source, "[files]", "runs all given"
-        "files as autocar script" },
+    [CMD_SOURCE] = { "source", cmd_source, "[files]",
+        "runs all given files as autocar script" },
     [CMD_QUIT] = { "quit", cmd_quit, "", "quit all" },
 };
 
