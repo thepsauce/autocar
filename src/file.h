@@ -104,4 +104,24 @@ bool link_executables(void);
  */
 bool run_tests(void);
 
+/**
+ * @brief Generates a shell script capable of building the main objects.
+ *
+ * @param fp Output file.
+ *
+ * @return -1 if a needed config option is not set
+ *            or if compiling already fails.
+ */
+int generate_shell_script(FILE *fp);
+
+/**
+ * @brief Generates a make file capable of building the main objects.
+ *
+ * @param fp Output file.
+ *
+ * @return -1 if a needed config option is not set
+ *            or if compiling already fails.
+ */
+int generate_make_file(FILE *fp);
+
 #endif

@@ -377,14 +377,15 @@ static bool rebuild_object(struct file *src, struct file *obj)
     return true;
 }
 
-static inline char *get_object_path(const char *path, const char *ext)
+static inline struct file *get_object_file(struct file *file)
 {
     struct config_entry *exts_entry;
     struct config_entry *build_entry;
     char *e;
     size_t l;
     size_t lb;
-    char *s;
+    char *o;
+    struct file *obj;
 
     exts_entry = get_conf("extensions", NULL);
     build_entry = get_conf("build", NULL);
@@ -393,13 +394,15 @@ static inline char *get_object_path(const char *path, const char *ext)
     l = e == NULL ? 0 : strlen(e);
     lb = strlen(build_entry->values[0]);
 
-    s = smalloc(lb + 1 + (ext - path) + l + 1);
-    memcpy(s, build_entry->values[0], lb);
-    s[lb] = '/';
-    memcpy(&s[lb + 1], path, ext - path);
-    memcpy(&s[lb + 1 + ext - path], e, l);
-    s[lb + 1 + ext - path + l] = '\0';
-    return s;
+    o = smalloc(lb + 1 + (file->ext - file->path) + l + 1);
+    memcpy(o, build_entry->values[0], lb);
+    o[lb] = '/';
+    memcpy(&o[lb + 1], file->path, file->ext - file->path);
+    memcpy(&o[lb + 1 + file->ext - file->path], e, l);
+    o[lb + 1 + file->ext - file->path + l] = '\0';
+    obj = add_file(o, EXT_TYPE_OBJECT, file->flags & FLAG_IS_TEST);
+    free(o);
+    return obj;
 }
 
 /**
@@ -521,32 +524,42 @@ static bool has_header_changed(struct file *file, struct file *obj)
     return chg;
 }
 
+/**
+ * @brief Recompiles given source file if needed.
+ *
+ * @param file  The source file.
+ * @param obj   The associated object file.
+ *
+ * @return If recompiling was successful.
+ */
+static bool update_object(struct file *file, struct file *obj)
+{
+    stat_file(obj);
+    if (!(obj->flags & FLAG_EXISTS) ||
+            file->st.st_mtime > obj->st.st_mtime ||
+            has_header_changed(file, obj)) {
+        if (!rebuild_object(file, obj)) {
+            return false;
+        }
+    } else if (obj->flags & FLAG_IS_FRESH) {
+        if (object_has_main(obj->path)) {
+            obj->flags |= FLAG_HAS_MAIN;
+        } else {
+            obj->flags &= ~FLAG_HAS_MAIN;
+        }
+    }
+    obj->flags &= ~FLAG_IS_FRESH;
+    return true;
+}
+
 bool build_objects(void)
 {
-    struct file *obj, *file;
-    char *o;
+    struct file *file;
 
     for (size_t i = 0; i < Files.num; i++) {
         file = Files.ptr[i];
         if (file->type == EXT_TYPE_SOURCE) {
-            o = get_object_path(file->path, file->ext);
-            obj = add_file(o, EXT_TYPE_OBJECT, file->flags & FLAG_IS_TEST);
-            free(o);
-            stat_file(obj);
-            if (!(obj->flags & FLAG_EXISTS) ||
-                    file->st.st_mtime > obj->st.st_mtime ||
-                    has_header_changed(file, obj)) {
-                if (!rebuild_object(file, obj)) {
-                    return false;
-                }
-            } else if (obj->flags & FLAG_IS_FRESH) {
-                if (object_has_main(obj->path)) {
-                    obj->flags |= FLAG_HAS_MAIN;
-                } else {
-                    obj->flags &= ~FLAG_HAS_MAIN;
-                }
-            }
-            obj->flags &= ~FLAG_IS_FRESH;
+            update_object(file, get_object_file(file));
         }
         file->flags &= ~FLAG_IS_FRESH;
     }
@@ -610,24 +623,27 @@ static bool relink_executable(struct file *exec,
     return true;
 }
 
-static inline char *get_exec_path(const char *path, char *ext)
+static inline struct file *get_exec_file(struct file *file)
 {
     struct config_entry *exts_entry;
     char *e;
     size_t l;
     char *s;
+    struct file *exec;
 
     exts_entry = get_conf("extensions", NULL);
     e = exts_entry->values[EXT_TYPE_EXECUTABLE];
     l = e == NULL ? 0 : strlen(e) + 1;
-    s = smalloc(ext - path + l + 1);
-    memcpy(s, path, ext - path);
+    s = smalloc(file->ext - file->path + l + 1);
+    memcpy(s, file->path, file->ext - file->path);
     if (l == 0) {
-        s[ext - path] = '\0';
-        return s;
+        s[file->ext - file->path] = '\0';
+    } else {
+        strcpy(&s[file->ext - file->path], e);
     }
-    strcpy(&s[ext - path], e);
-    return s;
+    exec = add_file(s, EXT_TYPE_EXECUTABLE, file->flags & FLAG_IS_TEST);
+    free(s);
+    return exec;
 }
 
 bool link_executables(void)
@@ -636,7 +652,6 @@ bool link_executables(void)
     struct file **objects = NULL;
     size_t num_objects = 0;
     time_t latest_time = 0;
-    char *e;
     struct file *exec;
 
     for (size_t i = 0; i < Files.num; i++) {
@@ -651,9 +666,7 @@ bool link_executables(void)
     for (size_t i = 0; i < Files.num; i++) {
         file = Files.ptr[i];
         if (file->flags & FLAG_HAS_MAIN) {
-            e = get_exec_path(file->path, file->ext);
-            exec = add_file(e, EXT_TYPE_EXECUTABLE, file->flags & FLAG_IS_TEST);
-            free(e);
+            exec = get_exec_file(file);
             stat_file(exec);
             if (!(exec->flags & FLAG_EXISTS) ||
                     MAX(latest_time, file->st.st_mtime) > exec->st.st_mtime) {
@@ -796,4 +809,284 @@ bool run_tests(void)
         }
     }
     return true;
+}
+
+/**
+ * @brief Prints a string to a file while escaping all shell interpretations.
+ *
+ * @param fp File to print to.
+ */
+static void print_shell_escaped(const char *str, FILE *fp)
+{
+    fputc('\'', fp);
+    for (; str[0] != '\0'; str++) {
+        if (str[0] == '\'') {
+            fputc('\'', fp);
+            fputc('\\', fp);
+        }
+        fputc(str[0], fp);
+    }
+    fputc('\'', fp);
+}
+
+int generate_shell_script(FILE *fp)
+{
+    static const struct {
+        const char *name;
+        bool as_array;
+    } write_confs[] = {
+        { "CC", false },
+        { "BUILD", false },
+        { "C_FLAGS", true },
+        { "C_LIBS", true }
+    };
+    struct config_entry *entry;
+    struct file *file, *obj;
+    char old;
+
+    fputs("#!/bin/bash\n", fp);
+    fputs("\nset -ex\n\n", fp);
+
+    for (size_t i = 0; i < ARRAY_SIZE(write_confs); i++) {
+        entry = get_conf(write_confs[i].name, NULL);
+        if (entry == NULL) {
+            printf("'%s' must exist\n", write_confs[i].name);
+            return -1;
+        }
+        if (write_confs[i].as_array) {
+            fprintf(fp, "%s=(", write_confs[i].name);
+            for (size_t i = 0; i < entry->num_values; i++) {
+                if (i > 0) {
+                    fputc(' ', fp);
+                }
+                print_shell_escaped(entry->values[i], fp);
+            }
+            fputc(')', fp);
+        } else {
+            if (entry->num_values == 0) {
+                return -1;
+            }
+            fprintf(fp, "%s=%s", entry->name, entry->values[0]);
+        }
+        fputc('\n', fp);
+    }
+
+    fprintf(fp, "RAW_OBJECTS=(");
+    for (size_t i = 0, j = 0; i < Files.num; i++) {
+        file = Files.ptr[i];
+        if (file->type != EXT_TYPE_SOURCE || !(file->flags & FLAG_EXISTS)) {
+            continue;
+        }
+        obj = get_object_file(file);
+        if (!update_object(file, obj)) {
+            return -1;
+        }
+        if ((obj->flags & FLAG_HAS_MAIN)) {
+            continue;
+        }
+        if (j > 0) {
+            fputc(' ', fp);
+        }
+        old = file->ext[0];
+        file->ext[0] = '\0';
+        print_shell_escaped(file->path, fp);
+        file->ext[0] = old;
+        j++;
+    }
+
+    fprintf(fp, ")\nRAW_MAIN_OBJECTS=(");
+    for (size_t i = 0, j = 0; i < Files.num; i++) {
+        file = Files.ptr[i];
+        if (file->type != EXT_TYPE_SOURCE || !(file->flags & FLAG_EXISTS)) {
+            continue;
+        }
+        obj = get_object_file(file);
+        if (!update_object(file, obj)) {
+            return -1;
+        }
+        if (!(obj->flags & FLAG_HAS_MAIN)) {
+            continue;
+        }
+        if (j > 0) {
+            fputc(' ', fp);
+        }
+        old = file->ext[0];
+        file->ext[0] = '\0';
+        print_shell_escaped(file->path, fp);
+        file->ext[0] = old;
+        j++;
+    }
+
+    fputs(")\nOBJECTS=()\n\
+\n\
+for ro in \"${RAW_OBJECTS[@]}\" ; do\n\
+    o=\"$BUILD/$ro.o\"\n\
+    s=\"$ro.c\"\n\
+    mkdir -p \"$(dirname \"$o\")\"\n\
+    \"$CC\" \"${C_FLAGS[@]}\" -c \"$s\" -o \"$o\"\n\
+    OBJECTS+=(\"$o\")\n\
+done\n\
+\n\
+for ro in \"${RAW_MAIN_OBJECTS[@]}\" ; do\n\
+    o=\"$BUILD/$ro.o\"\n\
+    s=\"$ro.c\"\n\
+    mkdir -p \"$(dirname \"$o\")\"\n\
+    \"$CC\" \"${C_FLAGS[@]}\" -c \"$s\" -o \"$o\"\n\
+done\n\
+\n\
+if [ \"${#RAW_MAIN_OBJECTS[@]}\" = 0 ] ; then\n\
+    exit 0\n\
+fi\n\
+\n\
+for ro in \"${RAW_MAIN_OBJECTS[@]}\" ; do\n\
+    o=\"$BUILD/$ro.o\"\n\
+    e=\"$BUILD/$ro\"\n\
+    mkdir -p \"$(dirname \"$e\")\"\n\
+    \"$CC\" \"${C_FLAGS[@]}\" \"${OBJECTS[@]}\" \"$o\" -o \"$e\" \"${C_LIBS[@]}\"\n\
+done\n\
+\n\
+set +x\n\
+\n\
+echo \"run any of the main objects:\"\n\
+for ro in \"${RAW_MAIN_OBJECTS[@]}\" ; do\n\
+    e=\"$BUILD/$ro\"\n\
+    echo \"./$e\"\n\
+done\n", fp);
+    return 0;
+}
+
+/**
+ * @brief Prints a string to a file while escaping all make interpretations.
+ *
+ * @param fp File to print to.
+ */
+static void print_make_escaped(const char *str, FILE *fp)
+{
+    for (; str[0] != '\0'; str++) {
+        switch (str[0]) {
+        case '\r':
+            fputs("'\\r'", fp);
+            continue;
+        case '\n':
+            fputs("'\\n'", fp);
+            continue;
+        case '#':
+        case '%':
+        case ' ':
+            fputc('\\', fp);
+            break;
+        case '\'':
+            fputc('\'', fp);
+            fputc('\\', fp);
+            break;
+        case '$':
+            fputc('$', fp);
+            break;
+        }
+        fputc(str[0], fp);
+    }
+}
+
+int generate_make_file(FILE *fp)
+{
+    static const struct {
+        const char *name;
+        bool as_array;
+    } write_confs[] = {
+        { "CC", false },
+        { "BUILD", false },
+        { "C_FLAGS", true },
+        { "C_LIBS", true }
+    };
+    struct config_entry *entry;
+    struct file *file, *obj;
+    char old;
+
+    for (size_t i = 0; i < ARRAY_SIZE(write_confs); i++) {
+        entry = get_conf(write_confs[i].name, NULL);
+        if (entry == NULL) {
+            printf("'%s' must exist\n", write_confs[i].name);
+            return -1;
+        }
+        if (write_confs[i].as_array) {
+            fprintf(fp, "%s = ", write_confs[i].name);
+            for (size_t i = 0; i < entry->num_values; i++) {
+                if (i > 0) {
+                    fputc(' ', fp);
+                }
+                print_make_escaped(entry->values[i], fp);
+            }
+        } else {
+            if (entry->num_values == 0) {
+                return -1;
+            }
+            fprintf(fp, "%s = %s", entry->name, entry->values[0]);
+        }
+        fputc('\n', fp);
+    }
+
+    fprintf(fp, "RAW_OBJECTS = ");
+    for (size_t i = 0, j = 0; i < Files.num; i++) {
+        file = Files.ptr[i];
+        if (file->type != EXT_TYPE_SOURCE || !(file->flags & FLAG_EXISTS)) {
+            continue;
+        }
+        obj = get_object_file(file);
+        if (!update_object(file, obj)) {
+            return -1;
+        }
+        if ((obj->flags & FLAG_HAS_MAIN)) {
+            continue;
+        }
+        if (j > 0) {
+            fputc(' ', fp);
+        }
+        old = file->ext[0];
+        file->ext[0] = '\0';
+        print_make_escaped(file->path, fp);
+        file->ext[0] = old;
+        j++;
+    }
+
+    fprintf(fp, "\nRAW_MAIN_OBJECTS = ");
+    for (size_t i = 0, j = 0; i < Files.num; i++) {
+        file = Files.ptr[i];
+        if (file->type != EXT_TYPE_SOURCE || !(file->flags & FLAG_EXISTS)) {
+            continue;
+        }
+        obj = get_object_file(file);
+        if (!update_object(file, obj)) {
+            return -1;
+        }
+        if (!(obj->flags & FLAG_HAS_MAIN)) {
+            continue;
+        }
+        if (j > 0) {
+            fputc(' ', fp);
+        }
+        old = file->ext[0];
+        file->ext[0] = '\0';
+        print_make_escaped(file->path, fp);
+        file->ext[0] = old;
+        j++;
+    }
+
+    fputs("\n\nOBJECTS = $(addprefix $(BUILD)/,$(addsuffix .o,$(RAW_OBJECTS)))\n\
+MAIN_OBJECTS = $(addprefix $(BUILD)/,$(addsuffix .o,$(RAW_MAIN_OBJECTS)))\n\
+\n\
+.PHONY: all\n\
+all: $(MAIN_OBJECTS) $(RAW_MAIN_OBJECTS:%=$(BUILD)/%)\n\
+\n\
+$(BUILD)/%.o: %.c\n\
+\t$(shell mkdir -p $(dir $@))\n\
+\t$(CC) $(C_FLAGS) -c $< -o $@\n\
+\n\
+$(BUILD)/%: $(BUILD)/%.o $(OBJECTS)\n\
+\t$(shell mkdir -p $(dir $@))\n\
+\t$(CC) $(C_FLAGS) $(OBJECTS) $< -o $@ $(C_LIBS)\n\
+\n\
+.PHONY: clean\n\
+clean:\n\
+\trm -rf $(BUILD)\n", fp);
+    return 0;
 }

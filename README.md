@@ -58,13 +58,14 @@ The cli allows adding of (test) files/folders and running.
 2. `config` show all config options
 3. `delete [files]` deletes given files from the file list
 4. `echo [args]` prints the expanded arguments to stdout
-5. `help` show help
-6. `list` list all files
-7. `pause` un-/pause the builder
-8. `run <name> <args>` run file with given name. Use `run` without any arguments
+5. `help [args]` show help
+6. `generate <shell|make>` generate a shell or make build file
+7. `list` list all files
+8. `pause` un-/pause the builder
+9. `run <name> <args>` run file with given name. Use `run` without any arguments
     to list all main programs. Use `run $<index> <args>` for convenience.
-9. `source [files]` runs all given files as autocar script
-10. `quit` quit all
+10. `source [files]` runs all given files as autocar script
+11. `quit` quit all
 
 It is only checked if the prefix of the typed command matches, so `q` is the
 same as `quit` or `co` is the same as `config` etc.
@@ -132,4 +133,3 @@ file/executable from the file system.
 ## Todo
 
 - cleanup
-- build script

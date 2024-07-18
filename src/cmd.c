@@ -23,6 +23,7 @@
 #include "cmd_delete.h"
 #include "cmd_echo.h"
 #include "cmd_help.h"
+#include "cmd_generate.h"
 #include "cmd_list.h"
 #include "cmd_pause.h"
 #include "cmd_quit.h"
@@ -30,24 +31,26 @@
 #include "cmd_source.h"
 
 const struct command Commands[] = {
-    [CMD_ADD] = { "add", cmd_add, "add [files] [-tr files] - add files to"
+    [CMD_ADD] = { "add", cmd_add, "[files] [-tr files]", "add files to"
         " the file list" },
-    [CMD_CONFIG] = { "config", cmd_config, "config - show all config options" },
-    [CMD_DELETE] = { "delete", cmd_delete, "delete [files] - deletes given"
+    [CMD_CONFIG] = { "config", cmd_config, "", "show all config options" },
+    [CMD_DELETE] = { "delete", cmd_delete, "[files]", "deletes given"
         " files from the file list" },
-    [CMD_ECHO] = { "echo", cmd_echo, "echo [args] - prints the expandend"
+    [CMD_ECHO] = { "echo", cmd_echo, "[args]", "prints the expandend"
         " arguments to stdout" },
-    [CMD_HELP] = { "help", cmd_help, "help - prints this help" },
-    [CMD_LIST] = { "list", cmd_list, "list - list all files" },
-    [CMD_PAUSE] = { "pause", cmd_pause, "pause - un-/pause the buffer" },
-    [CMD_RUN] = { "run", cmd_run,
-        "run [<name> [args]] - run file with"
-        "given name. Use `run` without any arguments\n"
-        "                      to list all main programs.\n"
-        "                      Use `run $<index> <args>` for convenience" },
-    [CMD_SOURCE] = { "source", cmd_source, "source [files] - runs all given"
+    [CMD_HELP] = { "help", cmd_help, "[args]",
+        "prints this help or only specific commands" },
+    [CMD_GENERATE] = { "generate", cmd_generate, "<shell|make>",
+        "generate a shell or make build file" },
+    [CMD_LIST] = { "list", cmd_list, "", "list all files" },
+    [CMD_PAUSE] = { "pause", cmd_pause, "", "un-/pause the buffer" },
+    [CMD_RUN] = { "run", cmd_run, "[<name> [args]]",
+        "run file with" "given name. Use `run` without any arguments\n"
+        "  to list all main programs.\n"
+        "  Use `run $<index> [args]` for convenience" },
+    [CMD_SOURCE] = { "source", cmd_source, "[files]", "runs all given"
         "files as autocar script" },
-    [CMD_QUIT] = { "quit", cmd_quit, "quit - quit all" },
+    [CMD_QUIT] = { "quit", cmd_quit, "", "quit all" },
 };
 
 int run_command(int cmd, char **args, size_t num_args, FILE *out)

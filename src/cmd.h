@@ -8,17 +8,19 @@
 #define CMD_DELETE      2
 #define CMD_ECHO        3
 #define CMD_HELP        4
-#define CMD_LIST        5
-#define CMD_PAUSE       6
-#define CMD_QUIT        7
-#define CMD_RUN         8
-#define CMD_SOURCE      9
-#define CMD_MAX        10
+#define CMD_GENERATE    5
+#define CMD_LIST        6
+#define CMD_PAUSE       7
+#define CMD_QUIT        8
+#define CMD_RUN         9
+#define CMD_SOURCE      10
+#define CMD_MAX         11
 
 extern const struct command {
     const char *name;
     int (*cmd_proc)(char **args, size_t num_args, FILE *out);
-    const char *help;
+    const char *args_help;
+    const char *desc_help;
 } Commands[CMD_MAX];
 
 /**
