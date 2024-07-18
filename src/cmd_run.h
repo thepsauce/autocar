@@ -48,6 +48,7 @@ int cmd_run(char **args, size_t num_args, FILE *out)
             exec_args[num_args] = NULL;
             result = run_executable(exec_args, NULL, NULL);
             free(exec_args);
+            file->flags &= ~FLAG_IS_FRESH;
             pthread_mutex_unlock(&Files.lock);
         }
     }

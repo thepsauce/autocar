@@ -26,14 +26,17 @@ int cmd_list(char **args, size_t num_args, FILE *out)
         if (file->flags & FLAG_EXISTS) {
             str_flags[f++] = 'e';
         }
+        if (file->flags & FLAG_IS_FRESH) {
+            str_flags[f++] = 'f';
+        }
         if (file->flags & FLAG_HAS_MAIN) {
             str_flags[f++] = 'm';
         }
-        if (file->flags & FLAG_IS_TEST) {
-            str_flags[f++] = 't';
-        }
         if (file->flags & FLAG_IS_RECURSIVE) {
             str_flags[f++] = 'r';
+        }
+        if (file->flags & FLAG_IS_TEST) {
+            str_flags[f++] = 't';
         }
         str_flags[f] = '\0';
         printf("(%zu) %s [%s] %s\n", i + 1,

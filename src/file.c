@@ -23,6 +23,8 @@ struct file_list Files;
  * is no '.' in the last entry of the path, then a pointer to the
  * `NULL`-terminator is returned.
  *
+ * @param path Path to get the extension of.
+ *
  * @return Extension of the path.
  */
 static char *get_extension(char *path)
@@ -46,6 +48,8 @@ static char *get_extension(char *path)
 
 /**
  * @brief Translates a file extension to an integer.
+ *
+ * @param e Extension to extract the type from.
  *
  * @see conf.h
  *
@@ -544,6 +548,7 @@ bool build_objects(void)
             }
             obj->flags &= ~FLAG_IS_FRESH;
         }
+        file->flags &= ~FLAG_IS_FRESH;
     }
     return true;
 }
@@ -553,10 +558,10 @@ bool build_objects(void)
  *
  * Runs a command line like: `gcc <flags> <objects> -o <main_object> <libs>`.
  *
- * @param exec The resulting executable file.
- * @param objects The objects to link.
- * @param num_objects The number of objects to link.
- * @param main_object The main objects.
+ * @param exec          The resulting executable file.
+ * @param objects       The objects to link.
+ * @param num_objects   The number of objects to link.
+ * @param main_object   The main objects.
  *
  * @return Whether linking was successful.
  */
@@ -656,6 +661,7 @@ bool link_executables(void)
                     free(objects);
                     return false;
                 }
+                exec->flags |= FLAG_IS_FRESH;
             }
         }
     }
