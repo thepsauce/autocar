@@ -23,19 +23,19 @@ int cmd_list(char **args, size_t num_args, FILE *out)
     for (size_t i = 0, f; i < Files.num; i++) {
         file = Files.ptr[i];
         f = 0;
-        if (file->flags & FLAG_EXISTS) {
+        if ((file->flags & FLAG_EXISTS)) {
             str_flags[f++] = 'e';
         }
-        if (file->flags & FLAG_IS_FRESH) {
+        if ((file->flags & FLAG_IS_FRESH)) {
             str_flags[f++] = 'f';
         }
-        if (file->flags & FLAG_HAS_MAIN) {
+        if ((file->flags & FLAG_HAS_MAIN)) {
             str_flags[f++] = 'm';
         }
-        if (file->flags & FLAG_IS_RECURSIVE) {
+        if ((file->flags & FLAG_IS_RECURSIVE)) {
             str_flags[f++] = 'r';
         }
-        if (file->flags & FLAG_IS_TEST) {
+        if ((file->flags & FLAG_IS_TEST)) {
             str_flags[f++] = 't';
         }
         str_flags[f] = '\0';
