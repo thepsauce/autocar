@@ -66,6 +66,8 @@ The cli allows adding of (test) files/folders and running.
 9. `source [files]` runs all given files as autocar script
 10. `quit` quit all
 
+It is only checked if the prefix of the typed command matches, so `q` is the
+same as `quit` or `co` is the same as `config` etc.
 
 #### Variables
 
