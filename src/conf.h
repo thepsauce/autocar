@@ -34,6 +34,17 @@ extern struct config {
  */
 struct config_entry *get_conf(const char *name, size_t *pindex);
 
+/**
+ * @brief Gets the entry with given name with given length.
+ *
+ * @param name      Name of the entry to search for.
+ * @param name_len  Length of the entry to search for.
+ * @param pindex    Where to store the optimal index, may be `NULL`.
+ *
+ * @return Found entry or `NULL` if none was found.
+ */
+struct config_entry *get_conf_l(const char *name, size_t name_len, size_t *pindex);
+
 #define SET_CONF_MODE_SET 0
 #define SET_CONF_MODE_APPEND 1
 #define SET_CONF_MODE_SUBTRACT 2

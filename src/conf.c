@@ -48,6 +48,41 @@ struct config_entry *get_conf(const char *name, size_t *pindex)
     return NULL;
 }
 
+struct config_entry *get_conf_l(const char *name, size_t name_len, size_t *pindex)
+{
+    size_t l, m, r;
+    int cmp;
+    struct config_entry *entry;
+
+    l = 0;
+    r = Config.num_entries;
+    while (l < r) {
+        m = (l + r) / 2;
+
+        entry = &Config.entries[m];
+        cmp = strncasecmp(entry->name, name, name_len);
+        if (cmp == 0) {
+            cmp = (unsigned char) entry->name[name_len];
+        }
+        if (cmp == 0) {
+            if (pindex != NULL) {
+                *pindex = m;
+            }
+            return entry;
+        }
+        if (cmp < 0) {
+            l = m + 1;
+        } else {
+            r = m;
+        }
+    }
+    if (pindex != NULL) {
+        *pindex = r;
+    }
+    printf("not found: %.*s\n", (int) name_len, name);
+    return NULL;
+}
+
 /**
  * Returns the index of the given value within the entry or `SIZE_MAX` if the
  * entry was not found.

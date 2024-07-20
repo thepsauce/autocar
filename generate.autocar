@@ -1,0 +1,4 @@
+generate make > Makefile
+generate shell > build.sh
+:chmod +x build.sh
+generate c > build.c

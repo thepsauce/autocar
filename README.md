@@ -56,16 +56,17 @@ The cli allows adding of (test) files/folders and running.
 
 1. `add [files] [-t files] [-r files]` adds given files to the file list, (`-t` for tests and `-r` for recursive directories)
 2. `config` show all config options
-3. `delete [files]` deletes given files from the file list
-4. `echo [args]` prints the expanded arguments to stdout
-5. `generate <shell|make>` generate a shell or make build file
-6. `help [args]` show help
-7. `list` list all files
-8. `pause` un-/pause the builder
-9. `run <name> <args>` run file with given name. Use `run` without any arguments
+3. `build [--collect|-c]` build all files and optionally collect them beforehand
+4. `delete [files]` deletes given files from the file list
+5. `echo [args]` prints the expanded arguments to stdout
+6. `generate <shell|make|c>` generate a shell, make or c build file
+7. `help [args]` show help
+8. `list` list all files
+9. `pause` un-/pause the builder
+10. `run <name> <args>` run file with given name. Use `run` without any arguments
     to list all main programs. Use `run $<index> <args>` for convenience.
-10. `source [files]` runs all given files as autocar script
-11. `quit` quit all
+11. `source [files]` runs all given files as autocar script
+12. `quit` quit all
 
 It is only checked if the prefix of the typed command matches, so `q` is the
 same as `quit` or `co` is the same as `config` etc.

@@ -90,9 +90,27 @@ struct file *search_file(const char *path, size_t *pindex);
 int collect_files(void);
 
 /**
+ * @brief Gets the object file associated with given source file.
+ *
+ * @param file Source file.
+ *
+ * @return Object file.
+ */
+struct file *get_object_file(const struct file *file);
+
+/**
  * Build all files.
  */
 bool build_objects(void);
+
+/**
+ * @brief Gets the executable file associated with given source file.
+ *
+ * @param file Source file.
+ *
+ * @return Executable file.
+ */
+struct file *get_exec_file(const struct file *file);
 
 /**
  * Link all executables.
@@ -103,25 +121,5 @@ bool link_executables(void);
  * Run all tests.
  */
 bool run_tests(void);
-
-/**
- * @brief Generates a shell script capable of building the main objects.
- *
- * @param fp Output file.
- *
- * @return -1 if a needed config option is not set
- *            or if compiling already fails.
- */
-int generate_shell_script(FILE *fp);
-
-/**
- * @brief Generates a make file capable of building the main objects.
- *
- * @param fp Output file.
- *
- * @return -1 if a needed config option is not set
- *            or if compiling already fails.
- */
-int generate_make_file(FILE *fp);
 
 #endif

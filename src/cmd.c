@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "cmd_add.h"
+#include "cmd_build.h"
 #include "cmd_config.h"
 #include "cmd_delete.h"
 #include "cmd_echo.h"
@@ -33,6 +34,8 @@
 const struct command Commands[] = {
     [CMD_ADD] = { "add", cmd_add, "[files] [-tr files]",
         "add files to the file list" },
+    [CMD_BUILD] = { "build", cmd_build, "[--collect|-c]",
+        "build everything" },
     [CMD_CONFIG] = { "config", cmd_config, "", "show all config options" },
     [CMD_DELETE] = { "delete", cmd_delete, "[files]",
         "deletes given files from the file list" },

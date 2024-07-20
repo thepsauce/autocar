@@ -1,15 +1,14 @@
 CC = gcc
-BUILD = bulid
 C_FLAGS = -std=gnu99 -Wall -Wextra -Werror -Wpedantic -g -fsanitize=address
 C_LIBS = -lm -lbfd -lreadline
-RAW_OBJECTS = src/args src/cli src/cmd src/conf src/eval src/file src/salloc src/util
-RAW_MAIN_OBJECTS = src/main tests/lol
-
-OBJECTS = $(addprefix $(BUILD)/,$(addsuffix .o,$(RAW_OBJECTS)))
-MAIN_OBJECTS = $(addprefix $(BUILD)/,$(addsuffix .o,$(RAW_MAIN_OBJECTS)))
+BUILD = bulid
+OBJECTS = bulid/src/args.o bulid/src/cli.o bulid/src/cmd.o bulid/src/conf.o bulid/src/eval.o bulid/src/file.o bulid/src/salloc.o bulid/src/util.o
+MAIN_OBJECTS = bulid/src/main.o bulid/tests/lol.o
+MAIN_EXECUTABLES = bulid/src/main bulid/tests/lol
 
 .PHONY: all
-all: $(MAIN_OBJECTS) $(RAW_MAIN_OBJECTS:%=$(BUILD)/%)
+all: $(MAIN_EXECUTABLES) $(OBJECTS) $(MAIN_OBJECTS)
+	$(foreach exec,$(MAIN_EXECUTABLES),$(info $(exec)))
 
 $(BUILD)/%.o: %.c
 	$(shell mkdir -p $(dir $@))

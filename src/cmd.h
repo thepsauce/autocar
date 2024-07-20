@@ -4,17 +4,18 @@
 #include <stdio.h>
 
 #define CMD_ADD         0
-#define CMD_CONFIG      1
-#define CMD_DELETE      2
-#define CMD_ECHO        3
-#define CMD_HELP        4
-#define CMD_GENERATE    5
-#define CMD_LIST        6
-#define CMD_PAUSE       7
-#define CMD_QUIT        8
-#define CMD_RUN         9
-#define CMD_SOURCE      10
-#define CMD_MAX         11
+#define CMD_BUILD       1
+#define CMD_CONFIG      2
+#define CMD_DELETE      3
+#define CMD_ECHO        4
+#define CMD_HELP        5
+#define CMD_GENERATE    6
+#define CMD_LIST        7
+#define CMD_PAUSE       8
+#define CMD_QUIT        9
+#define CMD_RUN         10
+#define CMD_SOURCE      11
+#define CMD_MAX         12
 
 extern const struct command {
     const char *name;
