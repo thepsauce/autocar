@@ -464,18 +464,22 @@ end:
 int eval_file(FILE *fp)
 {
     char *line = NULL;
+    size_t line_no;
     size_t a;
     ssize_t len;
 
-    while ((len = getline(&line, &a, fp)) > 0) {
+    line_no = 1;
+    while (errno = 0, (len = getline(&line, &a, fp)) > 0) {
         if (line[len - 1] == '\n') {
             len--;
             line[len] = '\0';
         }
         if (run_command_line(line) != 0) {
+            printf("failed sourcing at line '%zu'\n", line_no);
             free(line);
             return false;
         }
+        line_no++;
     }
     free(line);
     if (errno != 0) {
