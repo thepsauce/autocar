@@ -17,7 +17,6 @@ struct config_entry {
     char *name;
     char **values;
     size_t num_values;
-    long long_value;
 };
 
 extern struct config {

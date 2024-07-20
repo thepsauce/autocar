@@ -92,7 +92,6 @@ int set_conf(const char *name, const char **values,
         upper[0] = '\0';
         entry->values = NULL;
         entry->num_values = 0;
-        entry->long_value = 0;
         Config.num_entries++;
     }
 
@@ -131,10 +130,6 @@ int set_conf(const char *name, const char **values,
             }
         }
         break;
-    }
-
-    if (entry->num_values != 0) {
-        entry->long_value = strtol(entry->values[0], NULL, 0);
     }
 
     DLOG("'%s' is now:", entry->name);
