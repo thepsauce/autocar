@@ -214,6 +214,7 @@ int check_conf(void)
         { "EXT_BUILD", EXT_TYPE_OBJECT },
         { "EXT_SOURCE", EXT_TYPE_SOURCE },
         { "EXT_HEADER", EXT_TYPE_HEADER },
+        { "EXT_EXECUTABLE", EXT_TYPE_EXECUTABLE },
     };
     struct config_entry *entry, *exts_entry;
 
@@ -310,6 +311,10 @@ void set_default_conf(void)
     set_conf("build", &default_build, 1, SET_CONF_MODE_SET);
     set_conf("c_flags", default_flags, ARRAY_SIZE(default_flags), SET_CONF_MODE_SET);
     set_conf("extensions", default_extensions, EXT_TYPE_MAX, SET_CONF_MODE_SET);
+    set_conf("ext_source", &default_extensions[1], 1, SET_CONF_MODE_SET);
+    set_conf("ext_header", &default_extensions[2], 1, SET_CONF_MODE_SET);
+    set_conf("ext_object", &default_extensions[3], 1, SET_CONF_MODE_SET);
+    set_conf("ext_executable", &default_extensions[4], 1, SET_CONF_MODE_SET);
     set_conf("interval", &default_interval, 1, SET_CONF_MODE_SET);
     set_conf("prompt", &default_prompt, 1, SET_CONF_MODE_SET);
 }
